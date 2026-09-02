@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  # Base service definition (This microservice does not use its own DB per requirements, but if we need a DB, we can add it here)
+  template:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: python-template-service
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - PORT=${PORT:-8000}
+    networks:
+      - template-network
+    ports:
+      - "${PORT:-8000}:8000"
+
+networks:
+  template-network:
+    driver: bridge

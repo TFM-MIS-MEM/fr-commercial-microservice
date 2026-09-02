@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  template:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: python-template-service-dev
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=True
+      - PORT=${PORT:-8000}
+    networks:
+      - template-network
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      # Monta toda la estructura del proyecto en tiempo real
+      - ./:/app:cached
+
+networks:
+  template-network:
+    driver: bridge

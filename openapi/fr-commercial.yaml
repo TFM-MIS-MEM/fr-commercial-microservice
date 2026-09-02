@@ -1,0 +1,1879 @@
+openapi: 3.0.3
+
+info:
+  title: Servicio de Reconocimiento Facial (solución comercial)
+  description: |
+    Capacidades de detección, verificación e identificación facial sobre
+    galerías de identidades.
+
+    ## Canal dual
+
+    El servicio se consume a través de dos canales: **web**, orientado a la
+    evaluación y la administración, y **API**, orientado a la integración en
+    aplicaciones de terceros.
+
+    **El canal no forma parte del identificador de las operaciones.** Ambos
+    canales invocan los mismos recursos; el canal se manifiesta únicamente en el
+    esquema de seguridad empleado (`bearerAuth` para el canal web, `apiKeyAuth`
+    para el canal API), en la disponibilidad sujeta al plan contratado y en la
+    dimensión registrada para el análisis del consumo.
+
+    El criterio aplicado es que se separan operaciones por canal solo si el
+    contrato difiere. En este servicio nunca difiere: el contrato del canal API
+    es, a lo sumo, un superconjunto del contrato del canal web.
+
+    ## Modelo de actores
+
+    Los **sujetos biométricos** cuyas identidades se registran en las galerías
+    **no son usuarios del sistema**: carecen de credenciales y de acceso, y
+    constituyen datos gestionados por el cliente. Su autenticación es
+    responsabilidad de la aplicación de este.
+
+    En consecuencia, **la API KEY no debe alcanzar nunca el dispositivo del
+    sujeto**. Para habilitar la captura desde dicho dispositivo se emplean
+    tokens de enrolamiento de vigencia breve y un solo uso.
+
+    ## Unidades de consumo
+
+    Cada operación imputa un número variable de unidades, calculado como
+    `n_inferencias × peso_modelo`, más un término dependiente del tamaño de la
+    galería en las operaciones de búsqueda. Las operaciones sin inferencia
+    imputan 0,1 unidades; las de gestión no imputan consumo.
+
+    Pesos por modelo (hipótesis pendiente de validación empírica):
+    `xs` = 1, `s` = 3, `base` = 10.
+
+    ## Modelo e inmutabilidad de la galería
+
+    Cada galería queda vinculada de forma **inmutable** al modelo con el que fue
+    creada: los vectores generados por modelos distintos no son comparables
+    entre sí. Una reducción de plan que retire el acceso a dicho modelo provoca
+    la **congelación** de la galería, que pasa a solo lectura conservando
+    íntegramente sus datos.
+
+    ## Respuestas declaradas
+
+    Se declara lo que es una decisión, no lo que es un fallo.
+
+    - Toda operación **alcanzable a través de la pasarela** declara `429`. Lo
+      que determina el `429` no es que la operación esté protegida, sino que la
+      pasarela la alcance: el limitador es global y no mira credenciales.
+    - Toda operación con `security` declara además `401`.
+    - Toda operación que admite `apiKeyAuth` declara además `503` y `403`.
+    - Se declara `403` también en las operaciones que pueden denegarse por
+      plan, cuota o estado del recurso, con los códigos de dominio propios.
+    - No se declaran las respuestas accidentales (`500`, `502`, `504`) ni las
+      de plataforma (`404` de ruta inexistente, `413`, *preflight* de CORS).
+    - Las respuestas originadas en la pasarela cumplen `ErrorReport` igual que
+      las del servicio. La excepción conocida hoy es el `429`; ver
+      `TFM-MIS-MEM/docs#82`.
+
+    El `403 ACCOUNT_SUSPENDED` y el `503 AUTH_UNAVAILABLE` los emite la
+    pasarela y **solo pueden darse en el canal de API**: dependen de validar la
+    API KEY contra `auth`, mientras que el JWT del canal web se verifica por
+    firma sin salir de la pasarela. OpenAPI no sabe atar una respuesta a un
+    esquema de seguridad concreto, así que esa restricción va en la descripción
+    de cada respuesta, en prosa.
+
+    En las operaciones que ya declaran un `403` con código de dominio, el `403`
+    de la pasarela puede llegar igualmente: no se ha reescrito ningún código de
+    dominio para reflejarlo.
+  version: 1.0.0
+
+servers:
+  - url: https://api.example.com
+    description: Producción
+  - url: http://localhost:8000
+    description: Desarrollo local
+
+tags:
+  - name: Galerías
+  - name: Identidades
+  - name: Rostros
+  - name: Inferencia
+  - name: Prueba de vida
+  - name: Autorización delegada
+  - name: Notificación de eventos
+
+paths:
+
+  # ---------------------------------------------------------------- Galerías
+
+  /v1/fr/commercial/galleries:
+    post:
+      tags: [Galerías]
+      summary: Crear una galería
+      operationId: createGallery
+      description: |
+        El modelo asociado a la galería se fija en el momento de su creación y
+        es **inmutable**, debiendo pertenecer a los modelos disponibles en el
+        plan de la cuenta.
+
+        La galería se crea siempre en estado `active`. El estado no es un
+        parámetro de entrada: lo determina el sistema.
+
+        **Patrón:** STATE CREATION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                description:
+                  type: string
+                  maxLength: 500
+                model:
+                  allOf:
+                    - $ref: '#/components/schemas/ModelName'
+                  description: Si se omite, se emplea el modelo por defecto del plan.
+      responses:
+        '201':
+          description: Galería creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gallery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Modelo no disponible en el plan (`MODEL_NOT_IN_PLAN`) o límite de
+            galerías alcanzado (`GALLERY_LIMIT_REACHED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Galerías]
+      summary: Listar las galerías de la cuenta
+      operationId: listGalleries
+      description: '**Patrón:** RETRIEVAL OPERATION. **Consumo:** 0 unidades.'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Listado de galerías
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Gallery'
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/galleries/{galleryId}:
+    parameters:
+      - $ref: '#/components/parameters/GalleryId'
+    get:
+      tags: [Galerías]
+      summary: Obtener una galería
+      operationId: getGallery
+      description: '**Patrón:** RETRIEVAL OPERATION. **Consumo:** 0 unidades.'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Galería
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gallery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      tags: [Galerías]
+      summary: Modificar una galería
+      operationId: updateGallery
+      description: |
+        Permite modificar el nombre y la descripción. **El modelo no es
+        modificable**, y el estado lo gobierna el sistema.
+
+        **Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                description:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Galería actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gallery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Galerías]
+      summary: Eliminar una galería
+      operationId: deleteGallery
+      description: |
+        Elimina en cascada las identidades y rostros asociados. Permitido
+        incluso sobre galerías congeladas, para que el cliente pueda liberar
+        cuota.
+
+        **Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '204':
+          description: Galería eliminada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # ------------------------------------------------------------- Identidades
+
+  /v1/fr/commercial/galleries/{galleryId}/identities:
+    parameters:
+      - $ref: '#/components/parameters/GalleryId'
+    post:
+      tags: [Identidades]
+      summary: Enrolar una identidad
+      operationId: createIdentity
+      description: |
+        Crea una identidad junto con su primer rostro. Una identidad no puede
+        existir sin al menos un rostro asociado.
+
+        Admite una imagen o, alternativamente, un vector de características
+        acompañado de su token de procedencia. El servicio valida que dicho
+        vector procede de sus propios modelos y corresponde al modelo de la
+        galería de destino.
+
+        Admite token de enrolamiento con ámbito `enroll`.
+
+        **Patrón:** STATE CREATION OPERATION.
+        **Consumo:** `1 × peso_modelo` con imagen; 0,1 unidades con vector.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+        - enrollmentToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [fullName]
+              properties:
+                fullName:
+                  type: string
+                externalId:
+                  type: string
+                  description: |
+                    Identificador del sujeto en el sistema del cliente. Permite
+                    correlacionar sin almacenar el identificador interno del
+                    servicio. Único dentro de la galería.
+                image:
+                  type: string
+                  format: binary
+                embedding:
+                  type: string
+                  description: Vector de características codificado en base64.
+                embeddingToken:
+                  type: string
+                  description: Obligatorio si se aporta `embedding`.
+      responses:
+        '201':
+          description: Identidad creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenGalleryOrQuota'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`externalId` ya presente en la galería.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Identidades]
+      summary: Listar las identidades de una galería
+      operationId: listIdentities
+      description: |
+        **Patrón:** RETRIEVAL OPERATION. **Consumo:** 0 unidades.
+
+        El tamaño de página está acotado a 100 elementos: sin dicho tope, la
+        consulta sobre una galería del plan superior constituiría un vector de
+        denegación de servicio.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Listado de identidades
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Identity'
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/galleries/{galleryId}/identities/{identityId}:
+    parameters:
+      - $ref: '#/components/parameters/GalleryId'
+      - $ref: '#/components/parameters/IdentityId'
+    get:
+      tags: [Identidades]
+      summary: Obtener una identidad
+      operationId: getIdentity
+      description: '**Patrón:** RETRIEVAL OPERATION. **Consumo:** 0 unidades.'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Identidad
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      tags: [Identidades]
+      summary: Modificar una identidad
+      operationId: updateIdentity
+      description: '**Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                externalId:
+                  type: string
+      responses:
+        '200':
+          description: Identidad actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Identidades]
+      summary: Eliminar una identidad
+      operationId: deleteIdentity
+      description: |
+        Elimina en cascada los rostros asociados y decrementa el contador de
+        rostros indexados de la galería.
+
+        **Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '204':
+          description: Identidad eliminada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # ----------------------------------------------------------------- Rostros
+
+  /v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces:
+    parameters:
+      - $ref: '#/components/parameters/GalleryId'
+      - $ref: '#/components/parameters/IdentityId'
+    post:
+      tags: [Rostros]
+      summary: Añadir un rostro a una identidad
+      operationId: addFace
+      description: |
+        Añadir varios rostros a una misma identidad mejora la precisión de la
+        verificación y la identificación.
+
+        **No existe límite** en el número de rostros por identidad: cada rostro
+        computa individualmente sobre el límite de rostros indexados del plan,
+        por lo que la distribución entre identidades queda a criterio del
+        cliente, que decide así el compromiso entre precisión y consumo de
+        cuota.
+
+        **Patrón:** STATE CREATION OPERATION.
+        **Consumo:** `1 × peso_modelo` con imagen; 0,1 unidades con vector.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+        - enrollmentToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                embedding:
+                  type: string
+                embeddingToken:
+                  type: string
+      responses:
+        '201':
+          description: Rostro añadido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Face'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenGalleryOrQuota'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces/{faceId}:
+    parameters:
+      - $ref: '#/components/parameters/GalleryId'
+      - $ref: '#/components/parameters/IdentityId'
+      - name: faceId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [Rostros]
+      summary: Eliminar un rostro
+      operationId: deleteFace
+      description: |
+        Permite retirar un rostro enrolado erróneamente sin eliminar la
+        identidad completa.
+
+        **Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '204':
+          description: Rostro eliminado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Es el único rostro de la identidad (`LAST_FACE_OF_IDENTITY`). Una
+            identidad no puede quedarse sin rostros.
+
+            Se rechaza en lugar de eliminar la identidad en cascada: un
+            `DELETE` sobre un subrecurso no debe destruir silenciosamente su
+            recurso padre. Además, el caso de uso habitual ---sustituir la
+            única fotografía de una identidad--- perdería el `identityId` y el
+            `externalId`, invalidando las referencias que el cliente mantenga
+            en su sistema. El error indica la secuencia correcta: añadir el
+            nuevo rostro y eliminar después el anterior.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # -------------------------------------------------- Inferencia con estado
+
+  /v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/verify:
+    parameters:
+      - $ref: '#/components/parameters/GalleryId'
+      - $ref: '#/components/parameters/IdentityId'
+    post:
+      tags: [Inferencia]
+      summary: Verificar contra una identidad enrolada (1:1)
+      operationId: verifyAgainstIdentity
+      description: |
+        Verificación uno a uno de una imagen contra los rostros almacenados de
+        una identidad concreta. Sustenta el caso de uso de autenticación
+        biométrica y está disponible en **todos los planes, incluido el
+        gratuito**.
+
+        A diferencia de `/v1/fr/commercial/verification`, no requiere aportar las dos imágenes:
+        la referencia ya está enrolada.
+
+        **Patrón:** RETRIEVAL OPERATION. Aunque incorpora una inferencia, su
+        resultado depende del estado almacenado; las operaciones de inferencia
+        sin acceso a estado se clasifican como COMPUTATION FUNCTION.
+
+        **Consumo:** `1 × peso_modelo`.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+        - enrollmentToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                embedding:
+                  type: string
+                embeddingToken:
+                  type: string
+                threshold:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                  description: |
+                    Umbral de confianza. Solo admisible en los planes Pro y
+                    Business; en el plan gratuito produce `403`.
+                livenessToken:
+                  type: string
+                  description: |
+                    Acredita haber superado la prueba de vida. Vincula ambas
+                    operaciones, impidiendo que un sujeto supere la prueba y
+                    otro distinto complete la verificación. Requiere el
+                    complemento de prueba de vida.
+      responses:
+        '200':
+          description: Resultado de la verificación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenGalleryOrQuota'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/galleries/{galleryId}/search:
+    parameters:
+      - $ref: '#/components/parameters/GalleryId'
+    post:
+      tags: [Inferencia]
+      summary: Identificar dentro de una galería (1:N)
+      operationId: searchGallery
+      description: |
+        Identificación uno a N dentro de la galería indicada.
+
+        **No admite token de enrolamiento.** La operación devuelve el nombre de
+        la identidad coincidente: un token filtrado permitiría obtener la
+        identidad de personas de la galería a partir de una captura arbitraria,
+        lo que constituiría una vulneración de la privacidad de los sujetos
+        registrados.
+
+        Se emplea `POST` por el tamaño del contenido transmitido y no por su
+        semántica: la operación no modifica estado.
+
+        **Patrón:** RETRIEVAL OPERATION.
+        **Consumo:** `1 × peso_modelo + f(tamaño_galería)`.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                embedding:
+                  type: string
+                embeddingToken:
+                  type: string
+                threshold:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+      responses:
+        '200':
+          description: |
+            Resultado de la identificación. Si ninguna identidad supera el
+            umbral, `identity` es nulo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identity:
+                    allOf:
+                      - $ref: '#/components/schemas/Identity'
+                    nullable: true
+                  confidence:
+                    type: number
+                    format: float
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenGalleryOrQuota'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # ----------------------------------------------- Inferencia sin estado
+
+  /v1/fr/commercial/detection:
+    post:
+      tags: [Inferencia]
+      summary: Detectar rostros en una imagen
+      operationId: detectFaces
+      description: |
+        Devuelve las coordenadas de los rostros detectados y, opcionalmente,
+        los recortes correspondientes.
+
+        **Patrón:** COMPUTATION FUNCTION. No accede a estado alguno del
+        servidor: con la misma entrada devuelve siempre el mismo resultado.
+
+        **Consumo:** `peso_detector`.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                model:
+                  $ref: '#/components/schemas/ModelName'
+                onlyFirst:
+                  type: boolean
+                  default: false
+                includeCrops:
+                  type: boolean
+                  default: false
+                  description: |
+                    Devuelve los recortes en base64. Utilizado por el canal web
+                    para su presentación; es un parámetro, no un endpoint
+                    distinto.
+      responses:
+        '200':
+          description: Rostros detectados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [faces, numFaces]
+                properties:
+                  faces:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DetectedFace'
+                  numFaces:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenQuotaOrModel'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/verification:
+    post:
+      tags: [Inferencia]
+      summary: Verificar dos rostros aportados (1:1)
+      operationId: verifyPair
+      description: |
+        Compara dos rostros aportados por el cliente, sin intervención de
+        galería alguna.
+
+        **Patrón:** COMPUTATION FUNCTION.
+
+        **Consumo:** `2 × peso_modelo` con dos imágenes; `1 × peso_modelo` con
+        una imagen y un vector; 0,1 unidades con dos vectores. La operación
+        refleja así el coste real: el cliente que reutiliza vectores ya
+        extraídos paga menos porque efectivamente cuesta menos.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image1:
+                  type: string
+                  format: binary
+                embedding1:
+                  type: string
+                embeddingToken1:
+                  type: string
+                image2:
+                  type: string
+                  format: binary
+                embedding2:
+                  type: string
+                embeddingToken2:
+                  type: string
+                model:
+                  $ref: '#/components/schemas/ModelName'
+                threshold:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+      responses:
+        '200':
+          description: Resultado de la verificación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenQuotaOrModel'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/extract-embeddings:
+    post:
+      tags: [Inferencia]
+      summary: Extraer el vector de características de un rostro
+      operationId: extractEmbedding
+      description: |
+        **Disponible únicamente en el canal API.**
+
+        Devuelve el vector junto con un **token de procedencia** que codifica
+        modelo, versión y resumen criptográfico del propio vector, firmado por
+        el servicio. Dicho token debe adjuntarse al enrolar: permite verificar
+        criptográficamente que el vector procede de los modelos del servicio y
+        corresponde al modelo de la galería de destino, en lugar de confiar en
+        el cliente.
+
+        El formato binarizado es la **representación nativa del índice**, no una
+        mera opción de salida.
+
+        **Patrón:** COMPUTATION FUNCTION. **Consumo:** `1 × peso_modelo`.
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                model:
+                  $ref: '#/components/schemas/ModelName'
+                returnBinarized:
+                  type: boolean
+                  default: true
+      responses:
+        '200':
+          description: Vector extraído
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [embedding, embeddingToken, model, isBinarized]
+                properties:
+                  embedding:
+                    type: string
+                    description: Vector codificado en base64.
+                  embeddingToken:
+                    type: string
+                  model:
+                    type: string
+                    description: |
+                      Incluye la versión (por ejemplo `base-v1`). Los vectores
+                      solo son comparables entre sí si proceden de la misma
+                      versión del modelo, por lo que esta no puede actualizarse
+                      de forma silenciosa.
+                  isBinarized:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenQuotaOrModel'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # --------------------------------------------------------- Prueba de vida
+
+  /v1/fr/commercial/liveness/challenges:
+    post:
+      tags: [Prueba de vida]
+      summary: Solicitar un reto de prueba de vida
+      operationId: createLivenessChallenge
+      description: |
+        El servidor genera una secuencia **aleatoria** de acciones que el sujeto
+        debe realizar ante la cámara. El reto es de un solo uso y caduca a los
+        60 segundos.
+
+        Que la secuencia la determine el servidor es lo que convierte esto en un
+        control de seguridad: si la eligiera el cliente, bastaría con grabar un
+        vídeo una vez y reutilizarlo.
+
+        Requiere el complemento de prueba de vida.
+
+        **Patrón:** STATE CREATION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+        - enrollmentToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                actionsCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  default: 2
+      responses:
+        '201':
+          description: Reto generado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challengeId, actions, expiresAt]
+                properties:
+                  challengeId:
+                    type: string
+                  actions:
+                    type: array
+                    items:
+                      type: string
+                      enum: [turn_left, turn_right, blink, smile, nod]
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenFeature'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/liveness/{challengeId}/verify:
+    parameters:
+      - name: challengeId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Prueba de vida]
+      summary: Resolver un reto de prueba de vida
+      operationId: verifyLivenessChallenge
+      description: |
+        Verifica que la secuencia de fotogramas se corresponde con las acciones
+        solicitadas, comprobando el cambio de pose mediante el detector y la
+        continuidad de la identidad entre fotogramas.
+
+        Protege frente a la presentación de fotografías estáticas; **no cubre**
+        ataques mediante vídeo ni inyección en el flujo de cámara.
+
+        Devuelve un token que acredita haber superado la prueba, adjuntable a
+        una operación posterior de verificación o enrolamiento.
+
+        **Patrón:** STATE TRANSITION OPERATION (consume el reto).
+        **Consumo:** `n_fotogramas × peso_detector`.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+        - enrollmentToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [frames]
+              properties:
+                frames:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Resultado de la prueba
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [isLive, confidence]
+                properties:
+                  isLive:
+                    type: boolean
+                  confidence:
+                    type: number
+                    format: float
+                  livenessToken:
+                    type: string
+                    description: Presente solo si se supera la prueba.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenFeature'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: |
+            Reto caducado o ya consumido. El reto tiene ciclo de vida propio, de
+            ahí el uso de `410` en lugar de `404`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # -------------------------------------------------- Autorización delegada
+
+  /v1/fr/commercial/enrollment-tokens:
+    post:
+      tags: [Autorización delegada]
+      summary: Emitir un token de enrolamiento
+      operationId: createEnrollmentToken
+      description: |
+        Emite una credencial efímera y de un solo uso que puede viajar al
+        dispositivo del sujeto sin exponer la API KEY de la cuenta. Aunque sea
+        interceptada, el alcance del daño queda acotado a una galería concreta
+        durante un intervalo reducido.
+
+        **Los ámbitos disponibles se restringen a `enroll` y `verify`.** La
+        identificación uno a N queda deliberadamente excluida.
+
+        Se almacena en Redis indexado por el **hash** del token, de modo que un
+        volcado del almacén no permitiría reutilizar tokens vigentes. La
+        garantía de un solo uso se obtiene mediante lectura y borrado atómicos.
+
+        **Patrón:** STATE CREATION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [galleryId, scope]
+              properties:
+                galleryId:
+                  type: string
+                scope:
+                  type: string
+                  enum: [enroll, verify]
+                identityId:
+                  type: string
+                  description: Obligatorio cuando `scope` es `verify`.
+                ttlSeconds:
+                  type: integer
+                  minimum: 60
+                  maximum: 900
+                  default: 300
+      responses:
+        '201':
+          description: Token emitido
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expiresAt]
+                properties:
+                  token:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenFeature'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # ------------------------------------------------ Notificación de eventos
+
+  /v1/fr/commercial/webhooks:
+    post:
+      tags: [Notificación de eventos]
+      summary: Registrar un punto de notificación
+      operationId: createWebhook
+      description: |
+        Devuelve un **secreto de firma visible únicamente en esta respuesta**.
+
+        A diferencia de las credenciales de acceso, que se almacenan hasheadas
+        por ser únicamente verificadas, este secreto se almacena **cifrado**: el
+        servicio necesita recuperarlo en claro para calcular el HMAC de cada
+        envío saliente.
+
+        Solo se admiten URL `https://`. Se rechazan IP privadas, `localhost` y
+        direcciones de metadatos de nube, para prevenir peticiones forzadas del
+        lado del servidor.
+
+        **Patrón:** STATE CREATION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '201':
+          description: Punto de notificación registrado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/WebhookEndpoint'
+                  - type: object
+                    properties:
+                      secret:
+                        type: string
+                        description: Visible únicamente en esta respuesta.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenFeature'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Notificación de eventos]
+      summary: Listar los puntos de notificación
+      operationId: listWebhooks
+      description: '**Patrón:** RETRIEVAL OPERATION. **Consumo:** 0 unidades.'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Listado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookEndpoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenFeature'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/webhooks/{webhookId}:
+    parameters:
+      - name: webhookId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Notificación de eventos]
+      summary: Obtener un punto de notificación
+      operationId: getWebhook
+      description: '**Patrón:** RETRIEVAL OPERATION. **Consumo:** 0 unidades.'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Punto de notificación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      tags: [Notificación de eventos]
+      summary: Modificar un punto de notificación
+      operationId: updateWebhook
+      description: |
+        Permite modificar la URL, los eventos suscritos y el estado.
+
+        **No devuelve el secreto**: para rotarlo existe un endpoint específico,
+        por simetría con la rotación de la API KEY.
+
+        **Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/WebhookEvent'
+                status:
+                  type: string
+                  enum: [active, disabled]
+      responses:
+        '200':
+          description: Actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Notificación de eventos]
+      summary: Eliminar un punto de notificación
+      operationId: deleteWebhook
+      description: '**Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.'
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '204':
+          description: Eliminado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/webhooks/{webhookId}/deliveries:
+    parameters:
+      - name: webhookId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Notificación de eventos]
+      summary: Consultar el histórico de entregas
+      operationId: listWebhookDeliveries
+      description: |
+        Devuelve el histórico de envíos realizados a este punto de
+        notificación, incluidos los intentos fallidos y el instante del
+        siguiente reintento.
+
+        Es el endpoint que sostiene la vista de depuración del panel: sin él, la
+        colección de entregas existiría sin forma de consultarse y el cliente no
+        tendría manera de averiguar por qué no recibe sus notificaciones.
+
+        La profundidad accesible depende de la retención del plan.
+
+        **Patrón:** RETRIEVAL OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, delivered, failed]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Histórico de entregas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookDelivery'
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/fr/commercial/webhooks/{webhookId}/rotate-secret:
+    parameters:
+      - name: webhookId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Notificación de eventos]
+      summary: Rotar el secreto de firma
+      operationId: rotateWebhookSecret
+      description: |
+        Genera un secreto nuevo invalidando el anterior. Visible únicamente en
+        esta respuesta.
+
+        **Patrón:** STATE TRANSITION OPERATION. **Consumo:** 0 unidades.
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Secreto rotado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [secret]
+                properties:
+                  secret:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenAccountSuspended'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Canal web. Validado por firma en la pasarela.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Canal API. Validado contra el servicio de autenticación.
+    enrollmentToken:
+      type: apiKey
+      in: header
+      name: X-Enrollment-Token
+      description: |
+        Credencial efímera de un solo uso, acotada a una galería y a un ámbito
+        (`enroll` o `verify`). Nunca habilita identificación uno a N.
+
+  parameters:
+
+    GalleryId:
+      name: galleryId
+      in: path
+      required: true
+      schema:
+        type: string
+
+    IdentityId:
+      name: identityId
+      in: path
+      required: true
+      schema:
+        type: string
+
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Acotado a 100 para evitar consultas masivas.
+
+  schemas:
+
+    ModelName:
+      type: string
+      enum: [xs, s, base]
+
+    GalleryStatus:
+      type: string
+      enum: [active, frozen]
+
+    FrozenReason:
+      type: string
+      enum: [MODEL_NOT_IN_PLAN]
+
+    Gallery:
+      type: object
+      required: [id, name, model, status, identityCount, faceCount, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        model:
+          allOf:
+            - $ref: '#/components/schemas/ModelName'
+          description: Inmutable tras la creación.
+        status:
+          $ref: '#/components/schemas/GalleryStatus'
+        frozenReason:
+          allOf:
+            - $ref: '#/components/schemas/FrozenReason'
+          nullable: true
+        identityCount:
+          type: integer
+        faceCount:
+          type: integer
+          description: |
+            Contador desnormalizado. El límite de rostros indexados es de
+            estado, no acumulativo, por lo que debe evaluarse consultando el
+            valor actual en cada enrolamiento.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Identity:
+      type: object
+      required: [id, galleryId, fullName, faceCount, createdAt]
+      properties:
+        id:
+          type: string
+        galleryId:
+          type: string
+        fullName:
+          type: string
+        externalId:
+          type: string
+          nullable: true
+        faceCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Face:
+      type: object
+      required: [id, identityId, galleryId, isBinarized, source, createdAt]
+      properties:
+        id:
+          type: string
+        identityId:
+          type: string
+        galleryId:
+          type: string
+          description: |
+            Replicado deliberadamente: permite resolver la identificación uno a
+            N mediante una única consulta proyectada sobre la colección de
+            rostros, en lugar de recuperar antes todas las identidades.
+        isBinarized:
+          type: boolean
+        source:
+          type: string
+          enum: [image, embedding]
+        createdAt:
+          type: string
+          format: date-time
+
+    DetectedFace:
+      type: object
+      properties:
+        boundingBox:
+          type: object
+          properties:
+            x:
+              type: integer
+            y:
+              type: integer
+            width:
+              type: integer
+            height:
+              type: integer
+        confidence:
+          type: number
+          format: float
+        crop:
+          type: string
+          description: Recorte en base64, presente solo si se solicitó.
+
+    VerificationResult:
+      type: object
+      required: [isTheSame, confidence]
+      properties:
+        isTheSame:
+          type: boolean
+        confidence:
+          type: number
+          format: float
+        thresholdUsed:
+          type: number
+          format: float
+        model:
+          type: string
+
+    WebhookEvent:
+      type: string
+      enum:
+        - quota.threshold_reached
+        - quota.reset
+        - identity.enrolled
+        - gallery.frozen
+
+    WebhookEndpoint:
+      type: object
+      required: [id, url, events, status, createdAt]
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEvent'
+        status:
+          type: string
+          enum: [active, disabled, failing]
+        consecutiveFailures:
+          type: integer
+        lastDeliveryAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    WebhookDelivery:
+      type: object
+      required: [id, eventId, eventType, status, attempts, createdAt]
+      properties:
+        id:
+          type: string
+        eventId:
+          type: string
+          description: |
+            Identificador único del evento. La entrega es *at-least-once*, por
+            lo que el receptor debe emplearlo para descartar duplicados.
+        eventType:
+          $ref: '#/components/schemas/WebhookEvent'
+        status:
+          type: string
+          enum: [pending, delivered, failed]
+        attempts:
+          type: integer
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastStatusCode:
+          type: integer
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        nextRetryAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ErrorReport:
+      type: object
+      description: |
+        Aplicación del patrón ERROR REPORT. El campo `code` distingue subtipos
+        dentro de un mismo código de estado HTTP; en particular, permite separar
+        la denegación por plan de la denegación por cuota agotada.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+  responses:
+
+    BadRequest:
+      description: Petición mal formada
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    Unauthorized:
+      description: Credencial ausente o inválida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    TooManyRequests:
+      description: |
+        Límite de tasa superado. Se distingue de la cuota agotada, que produce
+        `403`: aquel es un control operacional que protege la disponibilidad,
+        esta un control económico que protege el coste de la infraestructura.
+
+        Lo emite el plugin `rate-limiting` de la pasarela, no el servicio.
+        **Su cuerpo no cumple hoy este esquema**: la pasarela responde
+        `{"message": ..., "request_id": ...}`, sin `code`. El esquema declarado
+        aquí es el que la respuesta debe cumplir, y la divergencia se sigue en
+        `TFM-MIS-MEM/docs#82`. El campo `request_id` es un detalle de la
+        implementación de la pasarela y deliberadamente **no** forma parte de
+        `ErrorReport`.
+
+        Alcance: el plugin de autenticación corta antes que el limitador, de
+        modo que en estas operaciones ---todas protegidas--- este `429` solo
+        alcanza a un llamante **ya autenticado**. Se sigue en
+        `TFM-MIS-MEM/docs#83`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    ServiceUnavailable:
+      description: |
+        La pasarela no ha podido resolver la credencial porque el servicio de
+        autenticación no responde (`AUTH_UNAVAILABLE`).
+
+        **Solo puede producirse en el canal de API.** La API KEY es una cadena
+        opaca y exige consultar a `auth`; el JWT del canal web se valida por
+        firma dentro de la propia pasarela, que no consulta a `auth`, de modo
+        que ese canal sigue operando aunque `auth` esté caído. OpenAPI no sabe
+        atar una respuesta a un esquema de seguridad concreto, así que la
+        restricción se declara aquí en prosa.
+
+        La pasarela **no cachea** este veredicto: servir uno caducado alargaría
+        en silencio la ventana de revocación.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    ForbiddenAccountSuspended:
+      description: |
+        La cuenta está suspendida (`ACCOUNT_SUSPENDED`). Lo emite **la
+        pasarela**, no el servicio: la credencial presentada es válida, pero la
+        cuenta a la que pertenece no puede operar.
+
+        **Solo puede producirse en el canal de API.** El estado de la cuenta se
+        comprueba al validar la API KEY contra `auth`; el canal web valida el
+        JWT por firma y no consulta el estado, de modo que un token ya emitido
+        sigue pasando hasta caducar ---la ventana de revocación documentada---.
+        OpenAPI no sabe atar una respuesta a un esquema de seguridad concreto,
+        así que la restricción se declara aquí en prosa.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    ForbiddenFeature:
+      description: |
+        Funcionalidad no incluida en el plan contratado
+        (`FEATURE_NOT_IN_PLAN`).
+
+        Con `apiKeyAuth`, este mismo `403` puede llegar además de la
+        pasarela con el código `ACCOUNT_SUSPENDED`, que no es de dominio:
+        ver `ForbiddenAccountSuspended`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    ForbiddenQuotaOrModel:
+      description: |
+        Cuota mensual agotada (`QUOTA_EXCEEDED`), modelo no disponible en el
+        plan (`MODEL_NOT_IN_PLAN`) o parámetro reservado a planes superiores
+        (`FEATURE_NOT_IN_PLAN`).
+
+        Con `apiKeyAuth`, este mismo `403` puede llegar además de la
+        pasarela con el código `ACCOUNT_SUSPENDED`, que no es de dominio:
+        ver `ForbiddenAccountSuspended`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    ForbiddenGalleryOrQuota:
+      description: |
+        Galería congelada (`GALLERY_FROZEN_MODEL_NOT_IN_PLAN`), cuota agotada
+        (`QUOTA_EXCEEDED`), límite de rostros indexados alcanzado
+        (`INDEXED_FACES_LIMIT_REACHED`) o parámetro reservado a planes
+        superiores (`FEATURE_NOT_IN_PLAN`).
+
+        Con `apiKeyAuth`, este mismo `403` puede llegar además de la
+        pasarela con el código `ACCOUNT_SUSPENDED`, que no es de dominio:
+        ver `ForbiddenAccountSuspended`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
