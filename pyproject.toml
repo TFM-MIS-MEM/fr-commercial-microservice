@@ -24,7 +24,9 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.coverage.report]
-fail_under = 0
+# Trinquete: 98,21 % medido en F1 (#33), fijado al entero inferior para que no
+# salte por dos centésimas en un refactor. Solo sube.
+fail_under = 98
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "venv"]
