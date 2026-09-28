@@ -1,22 +1,60 @@
-version: "3.8"
+# ===========================================================
+# FR Commercial — Despliegue
+#
+# NINGUNO de los dos servicios publica puertos, y es deliberado. El capítulo 4
+# de la memoria exige que los microservicios sean accesibles únicamente a través
+# de la pasarela, y en este servicio esa frase lo es todo: confía en las
+# cabeceras de identidad sin verificar credencial alguna, de modo que quien lo
+# alcance sin pasar por Kong se declara la cuenta que quiera.
+#
+# Por qué aquí no se publica ni en el bucle local, y en desarrollo sí: allí el
+# bucle local compra depuración directa y /docs en el navegador a cambio de
+# dejar fuera a la red. Aquí ese lado no existe, y el coste sigue: 127.0.0.1 es
+# alcanzable por todo proceso del anfitrión, por un contenedor con
+# `network_mode: host` y, según el reenvío que haya delante, por un `ssh -L`.
+# Publicar en el bucle local no es «no publicar»: es «publicar a todo el
+# anfitrión».
+#
+# Sin `ports`, ambos se alcanzan solo desde `fr-commercial-network`; en
+# Kubernetes, ClusterIP. Mismo criterio que auth (TFM-MIS-MEM/docs#95).
+# ===========================================================
 
 services:
-  # Base service definition (This microservice does not use its own DB per requirements, but if we need a DB, we can add it here)
-  template:
+  fr-commercial-mongodb:
+    restart: unless-stopped
+    image: mongo:7.0
+    container_name: fr-commercial-mongodb
+    networks:
+      - fr-commercial-network
+    # SIN `ports`. Sin autenticación todavía: TFM-MIS-MEM/docs#106.
+    volumes:
+      - fr-commercial-mongo-data:/data/db
+
+  fr-commercial:
     restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: python-template-service
+    container_name: fr-commercial-service
     environment:
-      - ENVIRONMENT=production
-      - DEBUG=False
-      - PORT=${PORT:-8000}
+      # `:?` y no `:-`: la guarda de src/core/settings.py tiene que estar también
+      # aquí, porque un valor por omisión en el compose la anularía.
+      #
+      # Entre comillas a propósito: el mensaje lleva «: », y sin comillas YAML
+      # lee el elemento como un mapa y el compose entero deja de ser válido
+      # ---también CON la variable definida---. Era una guarda que fallaba por
+      # el motivo equivocado; medido en #33.
+      - "MONGODB_URI=${MONGODB_URI:?obligatorio y sin defecto: mongodb://<host>:<puerto>/<base>}"
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      - fr-commercial-mongodb
     networks:
-      - template-network
-    ports:
-      - "${PORT:-8000}:8000"
+      - fr-commercial-network
+    # SIN `ports`. Véase la cabecera del fichero.
+
+volumes:
+  fr-commercial-mongo-data:
 
 networks:
-  template-network:
+  fr-commercial-network:
     driver: bridge

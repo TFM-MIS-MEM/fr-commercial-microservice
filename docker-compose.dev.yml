@@ -1,24 +1,96 @@
-version: "3.8"
+# ===========================================================
+# FR Commercial — Entorno de Desarrollo Local
+#
+# Servicios: fr-commercial-service + fr-commercial-mongodb
+# Red: tfm-network (externa, la crea scripts/dev-up.sh)
+#
+# Uso independiente:
+#   docker network create tfm-network   # solo la primera vez
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# dev-up.sh todavía no lo levanta: TFM-MIS-MEM/docs#105.
+# ===========================================================
 
 services:
-  template:
-    restart: unless-stopped
+
+  # -----------------------------------------------------------
+  # FR COMMERCIAL — FastAPI (modo desarrollo, recarga en caliente)
+  # -----------------------------------------------------------
+  fr-commercial:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: python-template-service-dev
+    container_name: fr-commercial-service
+    restart: unless-stopped
     environment:
-      - ENVIRONMENT=development
-      - DEBUG=True
-      - PORT=${PORT:-8000}
-    networks:
-      - template-network
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      # Valor explícito de la capa de orquestación, SIN `:-`. Un valor por
+      # omisión aquí anularía la guarda de src/core/settings.py, que no llegaría
+      # a ver nunca la variable ausente. La guarda tiene que estar en las dos
+      # capas o no está.
+      MONGODB_URI: mongodb://fr-commercial-mongodb:27017/fr-commercial-db
     ports:
-      - "${PORT:-8000}:8000"
+      # Publicado SÓLO en el bucle local. El servicio confía en las cabeceras de
+      # identidad que escribe la pasarela, de modo que quien lo alcance por este
+      # puerto se declara la cuenta que quiera. Atarlo a 127.0.0.1 deja fuera al
+      # resto de la red sin renunciar a la depuración directa ni a /docs desde el
+      # navegador.
+      #
+      # Deja fuera a la red, NO al anfitrión: cualquier proceso de esta máquina
+      # sigue alcanzándolo. La garantía real es de red ---ClusterIP en
+      # Kubernetes--- y el compose de producción no publica nada.
+      #
+      # 3002 en el anfitrión: auth ocupa el 3000, pricing el 3001 y la pasarela
+      # el 8000, que es el que publicaba la plantilla.
+      - "127.0.0.1:3002:8000"
     volumes:
-      # Monta toda la estructura del proyecto en tiempo real
-      - ./:/app:cached
+      - .:/app:cached
+    networks:
+      - tfm-network
+    depends_on:
+      fr-commercial-mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # -----------------------------------------------------------
+  # FR COMMERCIAL DATABASE — MongoDB
+  # -----------------------------------------------------------
+  fr-commercial-mongodb:
+    image: mongo:7.0
+    container_name: fr-commercial-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: fr-commercial-db
+    ports:
+      # Publicado SÓLO en el bucle local, y con un agravante: esta base NO tiene
+      # autenticación. En 0.0.0.0 cualquiera en la red leería y escribiría las
+      # galerías, y desde F4 los rostros y vectores biométricos. Atarla a
+      # 127.0.0.1 cierra la red y conserva Compass; NO cierra el anfitrión. Eso
+      # exige autenticación en MongoDB, que bloquea F4: TFM-MIS-MEM/docs#106.
+      #
+      # 27019: auth ocupa el 27017 y pricing el 27018.
+      - "127.0.0.1:27019:27017"
+    volumes:
+      - fr-commercial-mongo-data:/data/db
+    networks:
+      - tfm-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  fr-commercial-mongo-data:
+    name: tfm_fr-commercial-mongo-data
 
 networks:
-  template-network:
-    driver: bridge
+  tfm-network:
+    external: true
+    name: tfm-network
