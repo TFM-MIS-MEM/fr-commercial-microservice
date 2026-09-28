@@ -1,43 +1,32 @@
-# Base image: Python 3.11 slim
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
-# Establecer variables de entorno
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Establecer directorio de trabajo
 WORKDIR /app
 
-# Instalar dependencias del sistema requeridas para construir paquetes o librerías pesadas
+# curl: lo usa el healthcheck de los composes.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Crear un usuario no-root
 RUN addgroup --system appgroup && adduser --system --group appuser
 
-# Copiar dependencias
+# El árbol fijado y con resúmenes: la imagen instala EXACTAMENTE lo que audita la
+# CI, y ni un paquete que no esté en requirements.txt.
 COPY requirements.txt .
+RUN pip install --require-hashes -r requirements.txt
 
-# Instalar dependencias
-# Nota: Si se usa PyTorch en un futuro usar: RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-RUN pip install -r requirements.txt
-
-# Copiar el código de la aplicación
 COPY ./src ./src
+# El contrato. Sin él no hay /docs ni /openapi.json, y el servicio se niega a
+# arrancar (src/api/docs.py). La plantilla solo copiaba src/.
+COPY ./openapi ./openapi
 
-# Cambiar permisos al usuario no-root
 RUN chown -R appuser:appgroup /app
-
-# Cambiar al usuario no-root
 USER appuser
 
-# Exponer el puerto
 EXPOSE 8000
 
-# Comando para ejecutar la aplicación
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "src.main:create_app", "--host", "0.0.0.0", "--port", "8000"]

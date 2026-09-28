@@ -1,0 +1,16 @@
+# Herramientas de desarrollo y de la CI. NO se auditan: no llegan a la imagen.
+#
+# `-c requirements.txt` obliga a que toda dependencia compartida con producción
+# quede en la MISMA versión que se despliega. Sin la restricción, las pruebas
+# podrían ejecutarse contra una versión de, por ejemplo, starlette distinta de la
+# que corre en la imagen.
+-c requirements.txt
+
+pytest>=9.1
+pytest-cov>=7.0
+# TestClient de starlette 1.7 avisa de que httpx está deprecado para él.
+httpx2>=2.13
+ruff>=0.16
+bandit>=1.9
+pip-audit>=2.9
+pip-tools>=7.6

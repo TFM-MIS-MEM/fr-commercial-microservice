@@ -1,34 +1,35 @@
-.PHONY: help install lint lint-fix format test test-cov dev dev-docker prod-docker check clean pre-commit
+.PHONY: help install lock audit dev dev-docker prod-docker lint lint-fix format test check clean
 
 help:
-	@echo "Comandos disponibles:"
-	@echo "  make install      - Instala las dependencias y pre-commit hooks."
-	@echo "  make dev          - Ejecuta el servidor en modo desarrollo (hot-reload)."
-	@echo "  make dev-docker   - Levanta el entorno en Docker con docker-compose.dev.yml (hot-reload)."
-	@echo "  make prod-docker  - Construye y levanta la imagen para producción."
-	@echo "  make lint         - Analiza el código con Ruff."
-	@echo "  make lint-fix     - Arregla errores automáticamente con Ruff."
-	@echo "  make format       - Formatea el código con Ruff."
-	@echo "  make test         - Ejecuta los tests unitarios e integración (Pytest)."
-	@echo "  make test-cov     - Ejecuta los tests y muestra la cobertura."
-	@echo "  make check        - Ejecuta auditoría de seguridad (Bandit)."
-	@echo "  make clean        - Limpia archivos cacheados e innecesarios."
-	@echo "  make pre-commit   - Ejecuta todos los pre-commit hooks de manera manual."
+	@echo "make install     Instala producción y desarrollo desde los ficheros fijados."
+	@echo "make lock        Regenera requirements.txt y requirements-dev.txt (con resúmenes)."
+	@echo "make audit       Audita el árbol de PRODUCCIÓN (requirements.txt)."
+	@echo "make dev         Arranca el servicio en local (exige MONGODB_URI)."
+	@echo "make dev-docker  Levanta servicio + MongoDB con docker-compose.dev.yml."
+	@echo "make test        Pruebas (exige TEST_MONGODB_URI: servidor, sin base)."
+	@echo "make lint | lint-fix | format | check (bandit) | clean"
 
 install:
-	pip install -r requirements.txt
-	pip install -r requirements-dev.txt
-	pip install pre-commit
-	pre-commit install
+	pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+
+# El orden importa: requirements-dev.in restringe contra requirements.txt.
+lock:
+	pip-compile --generate-hashes --strip-extras --allow-unsafe -o requirements.txt requirements.in
+	pip-compile --generate-hashes --strip-extras --allow-unsafe -o requirements-dev.txt requirements-dev.in
+
+# El equivalente de `pnpm audit --prod`: lo que se despliega, no el árbol de
+# desarrollo.
+audit:
+	pip-audit -r requirements.txt --require-hashes --disable-pip --progress-spinner off
 
 dev:
-	uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+	uvicorn --factory src.main:create_app --host 127.0.0.1 --port 8000 --reload
 
 dev-docker:
-	docker-compose -f docker-compose.dev.yml up --build
+	docker compose -f docker-compose.dev.yml up --build
 
 prod-docker:
-	docker-compose -f docker-compose.yml up -d --build
+	docker compose -f docker-compose.yml up -d --build
 
 lint:
 	ruff check src tests
@@ -42,18 +43,9 @@ format:
 test:
 	pytest
 
-test-cov:
-	pytest --cov=src --cov-report=term-missing
-
 check:
 	bandit -c pyproject.toml -r src
 
-pre-commit:
-	pre-commit run --all-files
-
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache/
-	rm -rf .ruff_cache/
-	rm -f coverage.xml
+	rm -rf .pytest_cache/ .ruff_cache/ coverage.xml .coverage

@@ -1,0 +1,15 @@
+# Dependencias DIRECTAS de producción, con rango.
+#
+# El árbol completo, fijado y con resúmenes, es requirements.txt: lo genera
+# `make lock` (pip-compile --generate-hashes) y es a la vez lo que instala la
+# imagen (`pip install --require-hashes`) y lo que audita la CI. Sin ese fichero
+# no hay «auditar lo que se despliega»: con rangos, la imagen resolvería el árbol
+# en el momento de construirse, y la auditoría habría mirado otro.
+fastapi>=0.141
+uvicorn>=0.52
+pydantic>=2.13
+pydantic-settings>=2.15
+# Cliente asíncrono de MongoDB. NO motor: véase src/core/database.py.
+pymongo>=4.18
+pyyaml>=6.0
+structlog>=26.1

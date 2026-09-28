@@ -1,35 +1,22 @@
-# Base image: Python 3.11 slim
 FROM python:3.11-slim
 
-# Establecer variables de entorno
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Establecer directorio de trabajo
 WORKDIR /app
 
-# Instalar dependencias del sistema de manera eficiente
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar archivos de dependencias
 COPY requirements.txt requirements-dev.txt /app/
+RUN pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 
-# Instalar dependencias tanto de prod como de dev
-RUN pip install -r requirements.txt \
-    && pip install -r requirements-dev.txt
-
-# El código se montará como volumen, no es necesario copiarlo aquí
-# a menos que quieras tener un baseline, pero para hot-reload se monta
+# El código se monta como volumen; esta copia es solo la base de la imagen.
 COPY . /app/
 
-# Exponer el puerto
 EXPOSE 8000
 
-# Comando para ejecutar la aplicación con hot-reload en desarrollo
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "--factory", "src.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
