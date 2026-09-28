@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.api import docs, health
+from src.api import docs, galleries, health
 from src.core.database import connect
 from src.core.errors import install_error_handlers
 from src.core.logger import get_logger, setup_logger
@@ -63,4 +63,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(docs.router)
+    app.include_router(galleries.router)
     return app
