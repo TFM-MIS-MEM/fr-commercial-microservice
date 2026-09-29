@@ -11,25 +11,19 @@ Y se ata al contrato por los dos lados, para que no pueda pasar vacío:
   - El contrato declara 27 operaciones y todas con `security`. Si ese número
     cambia, esta prueba lo dice.
   - El conjunto de operaciones implementadas es EXACTAMENTE el esperado. Hoy,
-    `{getGallery}`. Una operación nueva obliga a tocar esta lista, y con ello a
-    que la prueba de 401 la recorra.
+    `{getGallery}`. Una operación nueva obliga a tocar `harness.IMPLEMENTED`, y
+    con ello a que la prueba de 401 y la comparación estática la recorran.
 """
 
 import re
-from pathlib import Path
 
 import pytest
-import yaml
 
 from src.core.settings import Settings
 from src.main import create_app
+from tests.contract.harness import IMPLEMENTED, SPEC, assert_bare_error, assert_satisfies_contract
 
-SPEC = yaml.safe_load(
-    (Path(__file__).resolve().parents[2] / "openapi" / "fr-commercial.yaml").read_text()
-)
 METHODS = ("get", "post", "put", "patch", "delete")
-
-IMPLEMENTED = {("get", "/v1/fr/commercial/galleries/{galleryId}")}
 
 
 def contract_operations():
@@ -70,3 +64,5 @@ def test_every_implemented_operation_rejects_a_request_without_identity(client, 
 
     assert res.status_code == 401, res.text
     assert res.json()["code"] == "UNAUTHORIZED"
+    assert_satisfies_contract(res)
+    assert_bare_error(res)

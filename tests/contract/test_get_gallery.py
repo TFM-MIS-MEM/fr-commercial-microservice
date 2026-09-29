@@ -4,6 +4,11 @@ La operación con la que F1 demuestra la cadena de identidad de extremo a
 extremo: RETRIEVAL, cero unidades, sin plan ni Redis ni parámetros de consulta,
 y con `X-Account-Id` como lo ÚNICO que decide entre `200` y `404`.
 
+TODA RESPUESTA PASA POR EL ARNÉS. `get()` valida contra el contrato cada una que
+devuelve, también las de los emparejamientos, y los errores cumplen además la
+forma desnuda (`code` y `message`, nada más). Una prueba de aquí no puede
+obtener una respuesta sin que se compruebe.
+
 CADA 404 VA EMPAREJADO CON EL 200 DEL PROPIETARIO. Un `404` a secas pasaría
 también si la siembra no hubiera escrito nada, si la consulta estuviera rota o si
 las cabeceras no llegaran: sería una comprobación que no puede fallar. El
@@ -13,6 +18,7 @@ la misma prueba, de modo que el `404` solo puede deberse a la cuenta.
 
 from bson import ObjectId
 
+from tests.contract.harness import assert_bare_error, assert_satisfies_contract
 from tests.support.identity import ABSENT, ACCOUNT_A, ACCOUNT_B, gateway_headers
 from tests.support.seed import CREATED, seed_gallery
 
@@ -21,7 +27,11 @@ DECLARED = {"id", "name", "model", "status", "identityCount", "faceCount", "crea
 
 
 def get(client, gallery_id, headers):
-    return client.get(PATH.format(gallery_id), headers=headers)
+    res = client.get(PATH.format(gallery_id), headers=headers)
+    assert_satisfies_contract(res)
+    if res.status_code >= 400:
+        assert_bare_error(res)
+    return res
 
 
 def assert_owner_sees_it(client, gallery_id):
@@ -78,8 +88,8 @@ def test_200_does_not_return_the_owner_nor_the_mongo_id(client, db):
 
 
 def test_200_optional_fields_are_omitted_one_by_one_not_sent_as_null(client, db):
-    # frozenReason, description y updatedAt no admiten null en el contrato
-    # (docs#103): se omiten cuando no hay valor.
+    # frozenReason, description y updatedAt no admiten null en el esquema de
+    # Gallery (docs#103): se omiten cuando no hay valor.
     gallery_id = seed_gallery(db, ACCOUNT_A)
 
     body = get(client, gallery_id, gateway_headers(ACCOUNT_A)).json()
