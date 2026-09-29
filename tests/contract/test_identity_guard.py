@@ -13,6 +13,12 @@ Y se ata al contrato por los dos lados, para que no pueda pasar vacío:
   - El conjunto de operaciones implementadas es EXACTAMENTE el esperado. Hoy,
     `{getGallery}`. Una operación nueva obliga a tocar `harness.IMPLEMENTED`, y
     con ello a que la prueba de 401 y la comparación estática la recorran.
+
+PARA F3: EL GUARDIÁN SOLO VE LO QUE SALE EN `app.openapi()`. Una operación
+montada con `include_in_schema=False` no aparece ahí, así que ni rompe la
+igualdad con `IMPLEMENTED` ni entra en la prueba de 401. Seguiría protegida
+---la dependencia está en el router---, pero ninguna prueba lo afirmaría. Con una
+ruta da igual; con veinte, no. Ninguna operación del contrato se monta así.
 """
 
 import re

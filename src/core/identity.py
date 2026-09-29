@@ -44,7 +44,10 @@ TRES DIFERENCIAS CON EXPRESS, LAS TRES MEDIDAS
    ---y lo vuelca a disco por encima de 1 MiB--- antes de rechazar la
    identidad: medido, 50 MiB leídos y volcados para acabar en `401`. Por el
    camino legítimo no ocurre, porque la pasarela corta antes; es el coste que
-   hereda F5 (véase ESTADO, sesión 9).
+   hereda F5 (véase ESTADO, sesión 9). El orden es el mismo que en Express; el
+   coste, no: `express.json()` corta en 100 kB por omisión ---10 MB en `auth` y
+   `pricing`, que lo suben---, y aquí se leyeron 50 MiB en memoria antes del
+   `401`, sin tope.
 
 LO QUE NO SE HACE
 -----------------
