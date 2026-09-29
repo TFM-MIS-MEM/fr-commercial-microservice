@@ -7,23 +7,30 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.0
-    hooks:
-      - id: ruff
-        args: [ --fix ]
-      - id: ruff-format
-
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.8
-    hooks:
-      - id: bandit
-        args: ["-c", "pyproject.toml", "-r", "src"]
-        additional_dependencies: ["bandit[toml]"]
-
+  # Mismas herramientas y versiones que la CI: las del entorno, fijadas en
+  # requirements-dev.txt, y no una copia aparte con su propio `rev` que envejece.
   - repo: local
     hooks:
-      - id: pytest-check
+      - id: ruff
+        name: ruff
+        entry: ruff check src tests
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --check src tests
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: bandit
+        name: bandit
+        entry: bandit -q -c pyproject.toml -r src
+        language: system
+        pass_filenames: false
+        types: [python]
+      # Necesita TEST_MONGODB_URI: véase .env.example.
+      - id: pytest
         name: pytest
         entry: pytest
         language: system

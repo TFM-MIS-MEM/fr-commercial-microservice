@@ -4,14 +4,13 @@ import sys
 import structlog
 
 
-def setup_logger(debug: bool = False):
-    """
-    Configures structlog to output JSON formatted logs.
-    """
+def setup_logger(level: str = "info") -> None:
+    """Registro en JSON por la salida estándar."""
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
-        level=logging.DEBUG if debug else logging.INFO,
+        level=getattr(logging, level.upper()),
+        force=True,
     )
 
     structlog.configure(

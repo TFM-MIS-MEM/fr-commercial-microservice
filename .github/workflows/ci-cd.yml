@@ -11,40 +11,84 @@ jobs:
     name: Lint, Audit & Test
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        python-version: ["3.11"]
+    # MongoDB real para las pruebas, la misma imagen que los composes.
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Setup Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          # La misma que construye el Dockerfile.
+          python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
+      # Desde los ficheros fijados y con resúmenes: la CI prueba el mismo árbol
+      # que despliega la imagen.
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+        run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 
       - name: Lint with Ruff
         run: ruff check src tests
 
-      - name: Format Check with Ruff
+      - name: Format check with Ruff
         run: ruff format --check src tests
 
-      - name: Security audit with Bandit
-        run: bandit -c pyproject.toml -r src
+      - name: Static analysis with Bandit
+        run: bandit -q -c pyproject.toml -r src
 
-      - name: Run tests with pytest
+      # -----------------------------------------------
+      # Auditoría de dependencias: el equivalente de `pnpm audit --prod`.
+      # -----------------------------------------------
+      # Solo requirements.txt, que es lo que instala la imagen. Las herramientas
+      # de desarrollo no llegan a producción, y un aviso sobre código que no se
+      # ejecuta allí es lo que dejó en rojo permanente el paso de `auth` hasta
+      # que nadie leía su salida.
+      #
+      # El reintento es por el servicio de avisos, no por las dependencias:
+      # `pip-audit` sale con 1 tanto si encuentra avisos como si no consigue
+      # hablar con PyPI (medido en #33: `ConnectionError`, exit=1). Solo lo
+      # segundo se reintenta: un aviso real tiene que teñir la CI de rojo a la
+      # primera. Mismo mecanismo que auth.
+      - name: Security audit (production tree)
+        run: |
+          for intento in 1 2 3; do
+            if pip-audit -r requirements.txt --require-hashes --disable-pip --progress-spinner off; then
+              exit 0
+            fi
+            if ! curl -sf --max-time 20 -o /dev/null https://pypi.org/pypi/pip/json; then
+              echo "::warning::PyPI no responde (intento $intento/3); reintentando en 30 s"
+              sleep 30
+              continue
+            fi
+            echo "::error::pip-audit ha encontrado vulnerabilidades en el árbol de producción"
+            exit 1
+          done
+          echo "::error::PyPI no ha respondido tras 3 intentos"
+          exit 1
+
+      - name: Run tests with coverage
+        env:
+          TEST_MONGODB_URI: mongodb://localhost:27017
         run: pytest
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.xml

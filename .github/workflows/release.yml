@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/python-microservice-template
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/fr-commercial-microservice
 
 jobs:
   docker:
