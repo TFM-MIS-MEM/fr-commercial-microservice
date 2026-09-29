@@ -14,8 +14,8 @@
 # `pip-audit` no ve el sistema operativo, y quién vigila esta base y con qué es
 # #108.
 #
-# Lo que el resumen NO fija: la capa de `apt-get install` de más abajo resuelve
-# contra los repositorios de Debian al construir.
+# No hay capa de `apt-get`: la sonda de salud usa el Python de la propia imagen
+# en lugar de `curl`, de modo que el resumen fija la base entera.
 FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -24,11 +24,6 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
-
-# curl: lo usa el healthcheck de los composes.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system appgroup && adduser --system --group appuser
 

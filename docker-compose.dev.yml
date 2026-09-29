@@ -51,7 +51,14 @@ services:
       fr-commercial-mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      # Con el Python de la imagen y no con `curl`: así la imagen no necesita
+      # capa de `apt-get`, que el resumen de la base no fijaría (#108).
+      # `urlopen` lanza ante un estado de error, y la excepción sale con 1.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"
       interval: 10s
       timeout: 5s
       retries: 5
