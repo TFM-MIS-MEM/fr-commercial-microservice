@@ -60,8 +60,13 @@ class Gallery(BaseModel):
     createdAt: datetime  # noqa: N815
     updatedAt: datetime | SkipJsonSchema[None] = None  # noqa: N815
 
+    # SIN anotación de retorno, y no por descuido. Pydantic deriva de ella el
+    # esquema de SERIALIZACIÓN, que es el que FastAPI publica para la respuesta:
+    # con `-> Any` el esquema de Gallery generado era `{}`. Las respuestas seguían
+    # saliendo bien; lo que se perdía era el esquema, y la comparación estática
+    # (tests/contract/shape.py) lo cazó en su primera ejecución, en #33.
     @model_serializer(mode="wrap")
-    def _omit_absent(self, handler) -> Any:
+    def _omit_absent(self, handler):
         data = handler(self)
         for name in OMIT_IF_ABSENT:
             if data.get(name) is None:
