@@ -8,9 +8,14 @@ EN LOS DOS SENTIDOS: lo que el arnés caza y lo que deja pasar.
 
 Las que deja pasar están escritas a propósito, cada una con su porqué. Si un día
 cambian de veredicto, esta prueba se pone en rojo y obliga a reescribir el porqué.
-La primera que lo hará es el campo de más: cuando el PR de docs#103 cierre los
-esquemas del contrato (vía C del punto 3 de #33), openapi-core lo cazará y la
-fila de «campo de más en Gallery» fallará sola.
+Ya ha pasado una vez: el campo de más en `Gallery` estaba entre las que pasan
+hasta que docs#103 cerró los esquemas del contrato (vía C del punto 3 de #33).
+La fila se puso en rojo sola, contra el contrato nuevo y sin tocarla, y se movió
+a las que se cazan en ese mismo PR.
+
+Las del secreto de un punto de notificación son la prueba de que el cierre
+sirvió: hoy lo caza openapi-core, sin una línea de código nuestro; con el
+contrato anterior, las tres pasaban.
 """
 
 import json
@@ -24,6 +29,8 @@ from starlette.responses import Response
 from tests.contract.harness import BASE_URL, assert_bare_error, assert_satisfies_contract
 
 GALLERY = "/v1/fr/commercial/galleries/66f00000000000000000ffff"
+WEBHOOKS = "/v1/fr/commercial/webhooks"
+WEBHOOK = f"{WEBHOOKS}/66f0000000000000000000aa"
 CONFORMING = {
     "id": "66f00000000000000000ffff",
     "name": "Empleados",
@@ -33,6 +40,16 @@ CONFORMING = {
     "faceCount": 7,
     "createdAt": "2026-09-10T10:00:00Z",
 }
+ENDPOINT = {
+    "id": "66f0000000000000000000aa",
+    "url": "https://hooks.example.com/fr",
+    "events": ["gallery.frozen"],
+    "status": "active",
+    "consecutiveFailures": 0,
+    "lastDeliveryAt": None,
+    "createdAt": "2026-09-30T10:00:00Z",
+}
+SECRET = "whsec_4f1c9e0b7a"
 UNAUTHORIZED = {"code": "UNAUTHORIZED", "message": "No valid identity was provided"}
 
 
@@ -42,6 +59,7 @@ class Lie:
     body: object = None
     content_type: str = "application/json"
     method: str = "GET"
+    path: str = GALLERY
 
     def serve(self):
         if self.body is None:
@@ -54,12 +72,12 @@ class Lie:
 
         # Respuesta de starlette a mano: el mentiroso ha de decir EXACTAMENTE lo
         # que la fila dice, sin que FastAPI filtre, serialice ni complete nada.
-        @app.api_route(GALLERY, methods=[self.method])
+        @app.api_route(self.path, methods=[self.method])
         def lie():
             return Response(content, status_code=self.status, media_type=self.content_type)
 
         with TestClient(app, base_url=BASE_URL) as client:
-            return client.request(self.method, GALLERY)
+            return client.request(self.method, self.path)
 
 
 def contract_verdict(response) -> str:
@@ -71,9 +89,25 @@ def contract_verdict(response) -> str:
 
 
 CAUGHT = {
-    "frozenReason: null (docs#103: allOf + nullable sin type)": Lie(
-        200, {**CONFORMING, "frozenReason": None}
+    # Antes de docs#103 lo cazaba openapi-core y Schemathesis no, por el
+    # `nullable` sin `type`. Hoy `frozenReason` no admite `null` en ninguna
+    # lectura: se omite cuando la galería no está congelada.
+    "frozenReason: null (no admite null)": Lie(200, {**CONFORMING, "frozenReason": None}),
+    # PASABA hasta docs#103, cuando ningún esquema cerraba `additionalProperties`.
+    # Se puso en rojo sola contra el contrato cerrado y se movió aquí.
+    "campo de más en Gallery (accountId)": Lie(200, {**CONFORMING, "accountId": "66f0a1"}),
+    # El secreto solo viaja en el 201 de createWebhook. Devuelto por una
+    # consulta, las tres pasaban con el contrato abierto; hoy las caza el
+    # cierre de WebhookEndpoint.
+    "getWebhook con el secreto": Lie(200, {**ENDPOINT, "secret": SECRET}, path=WEBHOOK),
+    "listWebhooks con el secreto": Lie(200, [{**ENDPOINT, "secret": SECRET}], path=WEBHOOKS),
+    "updateWebhook con el secreto": Lie(
+        200, {**ENDPOINT, "secret": SECRET}, method="PATCH", path=WEBHOOK
     ),
+    "201 de createWebhook con un campo de más": Lie(
+        201, {**ENDPOINT, "secret": SECRET, "accountId": "66f0a1"}, method="POST", path=WEBHOOKS
+    ),
+    "201 de createWebhook sin el secreto": Lie(201, ENDPOINT, method="POST", path=WEBHOOKS),
     "falta un obligatorio (status)": Lie(
         200, {k: v for k, v in CONFORMING.items() if k != "status"}
     ),
@@ -99,19 +133,21 @@ PASSES = {
     "401 conforme": Lie(401, UNAUTHORIZED),
     "404 conforme": Lie(404, {"code": "NOT_FOUND", "message": "Gallery not found"}),
     "204 sin cuerpo": Lie(204, method="DELETE"),
-    # PASA, y es lo correcto HOY: ningún esquema del contrato cierra
-    # `additionalProperties`, así que un campo de más es conforme para cualquier
-    # validador. Cerrarlos es la vía C del punto 3, y va en el PR de docs#103,
-    # no en F1. Cuando llegue, ESTA FILA SE PONDRÁ EN ROJO SOLA: muévala a
-    # CAUGHT en ese mismo PR.
-    "campo de más en Gallery (accountId)": Lie(200, {**CONFORMING, "accountId": "66f0a1"}),
+    "getWebhook conforme": Lie(200, ENDPOINT, path=WEBHOOK),
+    # El 201 legítimo, con su secreto: el cierre del compuesto no lo rechaza.
+    "201 de createWebhook con su secreto": Lie(
+        201, {**ENDPOINT, "secret": SECRET}, method="POST", path=WEBHOOKS
+    ),
     # PASA para el contrato y queda así: `details` es abierto a propósito, y
-    # `ErrorReport` se queda fuera de la vía C hasta docs#88, porque es idéntico
-    # en los tres contratos. Lo caza `assert_bare_error`, más abajo.
+    # `ErrorReport` es el único esquema propio que docs#103 dejó abierto, hasta
+    # docs#88, porque es idéntico en los tres contratos. Lo caza
+    # `assert_bare_error`, más abajo.
     "traza en details (caso #79)": Lie(
         401, {**UNAUTHORIZED, "details": {"stack": "File /app/src/core/identity.py"}}
     ),
-    # Ídem: ErrorReport sigue abierto. También lo caza `assert_bare_error`.
+    # Ídem, y por la misma razón: ErrorReport sigue abierto tras docs#103,
+    # hasta docs#88. Cuando se cierre, esta fila se pondrá roja sola, como la
+    # del campo de más en Gallery. Hoy lo caza `assert_bare_error`.
     "campo de más en ErrorReport": Lie(401, {**UNAUTHORIZED, "path": "/v1/fr/commercial"}),
 }
 
@@ -128,7 +164,7 @@ def test_the_harness_lets_through(lie):
 
 def test_the_harness_says_why():
     # Que falle no basta: el mensaje ha de llevar a la causa sin depurar.
-    lie = CAUGHT["frozenReason: null (docs#103: allOf + nullable sin type)"]
+    lie = CAUGHT["frozenReason: null (no admite null)"]
 
     with pytest.raises(AssertionError) as caught:
         assert_satisfies_contract(lie.serve())

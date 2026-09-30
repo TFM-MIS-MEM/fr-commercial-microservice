@@ -8,10 +8,11 @@ Tres piezas, y lo que cada una NO hace:
 
   1. `assert_satisfies_contract` — openapi-core, con el contrato canónico SIN
      tocar. Caza el estado no declarado, el tipo de contenido ajeno, el campo
-     obligatorio que falta, el tipo, el formato y el `enum`. NO caza el campo de
-     más, porque hoy ningún esquema del contrato cierra `additionalProperties`
-     y un campo de más ES conforme (se cerrarán en el PR de docs#103, vía C del
-     punto 3 de #33). Tampoco caza el cuerpo en una respuesta que no declara
+     obligatorio que falta, el tipo, el formato y el `enum`. Y desde docs#103
+     caza el campo de más, porque el contrato cierra sus esquemas (vía C del
+     punto 3 de #33): el secreto de un punto de notificación devuelto por una
+     consulta deja de ser conforme. La excepción es `ErrorReport`, que sigue
+     abierto hasta docs#88. NO caza el cuerpo en una respuesta que no declara
      `content`: de eso se encarga el adaptador, en esta misma función.
   2. `assert_bare_error` — la única comprobación explícita que queda, y es
      estructural: un error que no es de dominio lleva exactamente `code` y

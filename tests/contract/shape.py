@@ -8,8 +8,9 @@ Qué compara, por operación implementada:
 
   - Los parámetros: presencia, `required` y esquema.
   - Las respuestas 2xx: estados, tipos de contenido y esquema. Es lo que ata el
-    cierre de los modelos al del contrato: un `extra='allow'` en el código
-    aparece como `additionalProperties` que el contrato no tiene.
+    cierre de los modelos al del contrato, en los dos sentidos: desde docs#103
+    el contrato declara `additionalProperties: false`, y un modelo sin
+    `extra="forbid"` aparece como `código=None contrato=False`.
 
 Qué NO compara, a propósito: los estados de error. `401/403/429/503` los emiten
 la dependencia de identidad y la pasarela, y FastAPI añade un `422` que el
@@ -25,10 +26,17 @@ clave que no figure en `KNOWN` hace fallar la comparación con su nombre: una
 traducción que ignorase en silencio `exclusiveMinimum` ---que es booleano en
 3.0.3 y numérico en 3.1--- daría por iguales dos cotas distintas.
 
-Y la traducción toma partido en docs#103: lee `nullable` según OAS 3.0.3 al pie
-de la letra ---solo actúa si `type` está en el MISMO objeto---, que es también
-lo que hace openapi-core. Cuando #103 corrija el contrato, esta lectura deja de
-importar.
+Y la traducción lee `nullable` según OAS 3.0.3 al pie de la letra ---solo
+actúa si `type` está en el MISMO objeto---, que es también lo que hace
+openapi-core. Desde docs#103 el contrato ya no tiene ningún `nullable` sin
+`type` al lado (lo vigila `test_closure.py`), pero la lectura se queda: es la
+correcta, y la otra daría por iguales dos esquemas distintos.
+
+Dos composiciones del contrato que esta traducción NO sabe comparar y ante las
+que se niega: el cierre de `WebhookEndpoint` (`allOf` más nombres y
+`additionalProperties`) y el «X o nulo» de 3.0.3 (`anyOf: [X, NullValue]`).
+Ninguna operación implementada las usa; la primera que lo haga tendrá que
+enseñárselo.
 """
 
 from tests.contract.harness import SPEC
