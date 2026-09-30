@@ -1,7 +1,7 @@
-"""Guardias estáticas del contrato: cierre de esquemas, `nullable` y `400`.
+"""Guardias estáticas del contrato: cierre, `nullable`, `400` y escalares YAML.
 
-Las tres propiedades que introdujo docs#103 en `openapi/fr-commercial.yaml`, y
-ninguna se puede dejar a la validación de respuestas:
+Las cuatro propiedades que introdujo docs#103 en `openapi/fr-commercial.yaml`,
+y ninguna se puede dejar a la validación de respuestas:
 
   1. CIERRE (vía C del punto 3 de #33). Todo esquema de objeto declara
      `additionalProperties: false`, salvo los de `OPEN`, cada uno con su porqué.
@@ -25,6 +25,25 @@ ninguna se puede dejar a la validación de respuestas:
      (el campo de más se rechaza) y toda operación con un parámetro acotado
      (`minimum`, `maximum`, `enum`...).
 
+  4. NINGÚN ESCALAR PLANO QUE YAML 1.1 LEA COMO OTRA COSA. Es una guardia sobre
+     el TEXTO del fichero, no sobre lo cargado, porque la carga con PyYAML no
+     puede verlo: PyYAML no aplica las formas `y`/`n` de 1.1, y js-yaml (el
+     lector de `auth` y `pricing`) es core 1.2. Un lector 1.1 estricto sí las
+     aplica, y con el esquema cerrado una clave mal leída rechaza respuestas
+     legítimas: con `y:` sin comillas en `boundingBox`, `yaml` 2.9.1 en
+     `version: 1.1` convertía la clave en `"true"` y el `200` legítimo de
+     `detectFaces` daba «'y' was unexpected» (medido en #103).
+
+       - Claves: se rechaza toda clave plana que 1.1 lea como booleano o nulo.
+       - Valores: se rechazan solo `y`/`n`/`yes`/`no`/`on`/`off`, en todas sus
+         grafías. `true`, `false` y `null` como valores se leen igual en todos
+         los lectores y el contrato los usa a propósito (`nullable`,
+         `additionalProperties`, el `enum` de `NullValue`): no se tocan, y la
+         guardia no necesita excepciones.
+
+     Solo escalares PLANOS: `'y'` entre comillas es una cadena en cualquier
+     lector.
+
 ALCANCE DEL CIERRE EN LOS CUERPOS, sin redondear: que un campo de más dé `400`
 está PROBADO en cuerpos JSON (`test_rejections.py`). En los 8 cuerpos
 `multipart/form-data` es una obligación del contrato que vigila esta prueba y
@@ -32,7 +51,13 @@ que tienen que cumplir las operaciones que los implementen (F4, F5, F8, F12):
 el mecanismo medido está en `src/models/__init__.py`.
 """
 
-from tests.contract.harness import SPEC
+import re
+
+import pytest
+import yaml
+from yaml.nodes import MappingNode, ScalarNode, SequenceNode
+
+from tests.contract.harness import SPEC, SPEC_PATH
 
 COMPONENTS = "#/components/schemas"
 WH_201 = ("/v1/fr/commercial/webhooks", "post", "201")
@@ -186,3 +211,74 @@ def test_every_operation_with_a_bounded_parameter_declares_400():
             missing.append(f"{op['operationId']}: {bounded}")
 
     assert missing == []
+
+
+# ------------------------------------------------------ 4. escalares de YAML 1.1
+
+#: Booleanos de YAML 1.1 que ni PyYAML ni el core 1.2 leen como tales.
+YAML11_ONLY_BOOL = r"y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF"
+#: Booleanos y nulos que todos los lectores leen igual; en una CLAVE convierten
+#: el nombre en otra cosa, en un VALOR son lo que el contrato quiere decir.
+SHARED_BOOL_OR_NULL = r"true|True|TRUE|false|False|FALSE|null|Null|NULL|~"
+BAD_KEY = re.compile(rf"(?:{YAML11_ONLY_BOOL}|{SHARED_BOOL_OR_NULL})")
+BAD_VALUE = re.compile(rf"(?:{YAML11_ONLY_BOOL})")
+
+
+def _roles(node, role="valor"):
+    """Cada escalar del árbol, con su papel: clave o valor."""
+    if isinstance(node, MappingNode):
+        for key, item in node.value:
+            yield from _roles(key, "clave")
+            yield from _roles(item)
+    elif isinstance(node, SequenceNode):
+        for item in node.value:
+            yield from _roles(item)
+    elif isinstance(node, ScalarNode) and node.style is None:  # solo los planos
+        yield role, node
+
+
+def yaml11_ambiguities(text: str) -> list[str]:
+    """Escalares PLANOS que un lector de YAML 1.1 leería como algo distinto."""
+    out = []
+    for role, node in _roles(yaml.compose(text, Loader=yaml.SafeLoader)):
+        line = node.start_mark.line + 1
+        if role == "clave" and BAD_KEY.fullmatch(node.value):
+            out.append(
+                f"línea {line}: clave {node.value} sin comillas "
+                "(YAML 1.1: booleano o nulo, no un nombre)"
+            )
+        elif role == "valor" and BAD_VALUE.fullmatch(node.value):
+            out.append(f"línea {line}: valor {node.value} sin comillas (YAML 1.1: booleano)")
+    return out
+
+
+def test_no_plain_scalar_that_yaml_1_1_reads_differently():
+    assert yaml11_ambiguities(SPEC_PATH.read_text(encoding="utf-8")) == []
+
+
+YAML11_CONTROLS = {
+    "clave y sin comillas": (
+        "y:\n  type: integer\n",
+        ["línea 1: clave y sin comillas (YAML 1.1: booleano o nulo, no un nombre)"],
+    ),
+    "clave 'y' entre comillas": ("'y':\n  type: integer\n", []),
+    "enum [on] sin comillas": (
+        "enum: [on]\n",
+        ["línea 1: valor on sin comillas (YAML 1.1: booleano)"],
+    ),
+    "enum ['on'] entre comillas": ("enum: ['on']\n", []),
+    "nullable: true": ("nullable: true\n", []),
+    "clave Null sin comillas": (
+        "Null:\n  type: string\n",
+        ["línea 1: clave Null sin comillas (YAML 1.1: booleano o nulo, no un nombre)"],
+    ),
+    "enum [null] y additionalProperties: false": (
+        "enum: [null]\nadditionalProperties: false\n",
+        [],
+    ),
+}
+
+
+@pytest.mark.parametrize("text,expected", YAML11_CONTROLS.values(), ids=YAML11_CONTROLS.keys())
+def test_control_yaml11_ambiguities(text, expected):
+    assert yaml11_ambiguities(text) == expected
