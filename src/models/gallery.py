@@ -3,14 +3,19 @@
 Es el modelo de RESPUESTA de `components.schemas.Gallery`, no el modelo de
 dominio: índices, contadores y reconciliación son F2 (#34).
 
+CERRADO (`extra="forbid"`), como `components.schemas.Gallery` desde docs#103:
+el esquema publicado lleva `additionalProperties: false` y la comparación
+estática lo exige.
+
 OMISIÓN CAMPO A CAMPO, NO `exclude_none` GLOBAL. Tres campos del contrato son
 opcionales y ninguno admite `null`:
 
   - `description` y `updatedAt`: `type: string`, sin `nullable`.
-  - `frozenReason`: declara `nullable: true`, pero junto a un `allOf` y sin
-    `type` en el mismo objeto. En OAS 3.0.3 eso no permite `null` ---`nullable`
-    solo actúa si `type` está en el mismo Schema Object---, y openapi-core lo
-    rechaza (medido en #33; el defecto del contrato es TFM-MIS-MEM/docs#103).
+  - `frozenReason`: presente si y solo si `status` es `frozen`. Hasta docs#103
+    el contrato lo declaraba `nullable` junto a un `allOf` y sin `type`, que en
+    3.0.3 no permite `null` y en lo que dos validadores discrepaban; se decidió
+    omitirlo y quitar el `nullable`. El cierre no cambia esto: prohíbe los
+    nombres que no se declaran, no obliga a enviar los que sí.
 
 La forma conforme es no emitirlos cuando no hay valor. Se hace nombrándolos uno
 a uno en `OMIT_IF_ABSENT`, y no con `exclude_none` sobre toda la respuesta: eso
@@ -26,7 +31,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, model_serializer
+from pydantic import BaseModel, ConfigDict, model_serializer
 from pydantic.json_schema import SkipJsonSchema
 
 
@@ -49,6 +54,8 @@ OMIT_IF_ABSENT = ("description", "frozenReason", "updatedAt")
 
 
 class Gallery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     name: str
     description: str | SkipJsonSchema[None] = None
