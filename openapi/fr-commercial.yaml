@@ -62,6 +62,9 @@ info:
     - Toda operación que admite `apiKeyAuth` declara además `503` y `403`.
     - Se declara `403` también en las operaciones que pueden denegarse por
       plan, cuota o estado del recurso, con los códigos de dominio propios.
+    - Se declara `400` en toda operación con cuerpo y en toda operación con un
+      parámetro acotado (`minimum`, `maximum`, `enum`). Rechazar un valor fuera
+      de rango es una decisión, no un fallo: no se acota en silencio.
     - No se declaran las respuestas accidentales (`500`, `502`, `504`) ni las
       de plataforma (`404` de ruta inexistente, `413`, *preflight* de CORS).
     - Las respuestas originadas en la pasarela cumplen `ErrorReport` igual que
@@ -78,6 +81,44 @@ info:
     En las operaciones que ya declaran un `403` con código de dominio, el `403`
     de la pasarela puede llegar igualmente: no se ha reescrito ningún código de
     dominio para reflejarlo.
+
+    ## Esquemas cerrados
+
+    **Lo que no se declara, no se admite.** Todo esquema de objeto propio de
+    este contrato, de respuesta y de petición, declara
+    `additionalProperties: false`. Así, un campo que el contrato no declara
+    ---por ejemplo, el secreto de un punto de notificación devuelto por una
+    consulta--- deja de ser conforme, y lo detecta cualquier validador estándar
+    sin comprobación alguna escrita a mano.
+
+    - **En las peticiones**, un campo de más se rechaza con `400`, que declaran
+      todas las operaciones con cuerpo. Se aplica también a las partes de los
+      cuerpos `multipart/form-data`.
+    - **Quedan abiertos tres esquemas**, cada uno por un motivo:
+      `ErrorReport`, que es idéntico en los tres contratos del sistema y se
+      cerrará en los tres a la vez (`TFM-MIS-MEM/docs#88`); su campo `details`,
+      abierto a propósito para los datos propios de cada error de dominio; y
+      `WebhookEndpointBase`, la base que componen `WebhookEndpoint` y el `201`
+      de `createWebhook`.
+    - **La composición repite nombres.** En 3.0.3, `additionalProperties` solo
+      tiene en cuenta los `properties` de su mismo objeto, no los de los
+      miembros de un `allOf`. Por eso `WebhookEndpoint` y el `201` de
+      `createWebhook` enumeran de nuevo, sin definirlos, los campos de
+      `WebhookEndpointBase`. Olvidar un nombre en una de esas listas rechaza una
+      respuesta legítima; sobrar uno lo admite con cualquier valor, y eso ningún
+      validador lo detecta: lo vigila una prueba del servicio.
+
+    **La contrapartida es la compatibilidad hacia delante.** Un cliente que
+    valide contra este contrato rechazará un campo que se añada en el futuro.
+    Se acepta: añadir un campo ya es, por método, un cambio de contrato, que
+    empieza por esta especificación y se revisa junto al código que lo
+    implementa.
+
+    **La versión no se ha cambiado, y es una decisión, no un olvido.** Cerrar
+    los esquemas es un cambio incompatible para quien valide contra el
+    contrato, pero hoy el servicio no tiene consumidores, así que la ruptura no
+    alcanza a nadie. El versionado del contrato empieza a importar con el
+    primer consumidor.
   version: 1.0.0
 
 servers:
@@ -122,6 +163,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [name]
               properties:
                 name:
@@ -175,6 +217,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 properties:
                   items:
                     type: array
@@ -186,6 +229,8 @@ paths:
                     type: integer
                   total:
                     type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -241,6 +286,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 name:
                   type: string
@@ -326,6 +372,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               required: [fullName]
               properties:
                 fullName:
@@ -393,6 +440,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 properties:
                   items:
                     type: array
@@ -404,6 +452,8 @@ paths:
                     type: integer
                   total:
                     type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -458,6 +508,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 fullName:
                   type: string
@@ -540,6 +591,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 image:
                   type: string
@@ -653,6 +705,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 image:
                   type: string
@@ -726,6 +779,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 image:
                   type: string
@@ -748,11 +802,17 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
+                required: [identity]
                 properties:
                   identity:
-                    allOf:
+                    description: |
+                      La identidad coincidente, o `null` si ninguna supera el
+                      umbral. Siempre presente: la ausencia no es una tercera
+                      forma de decir «sin coincidencia».
+                    anyOf:
                       - $ref: '#/components/schemas/Identity'
-                    nullable: true
+                      - $ref: '#/components/schemas/NullValue'
                   confidence:
                     type: number
                     format: float
@@ -793,6 +853,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               required: [image]
               properties:
                 image:
@@ -817,6 +878,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [faces, numFaces]
                 properties:
                   faces:
@@ -860,6 +922,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 image1:
                   type: string
@@ -927,6 +990,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               required: [image]
               properties:
                 image:
@@ -944,6 +1008,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [embedding, embeddingToken, model, isBinarized]
                 properties:
                   embedding:
@@ -1000,6 +1065,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 actionsCount:
                   type: integer
@@ -1013,6 +1079,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [challengeId, actions, expiresAt]
                 properties:
                   challengeId:
@@ -1070,6 +1137,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
               required: [frames]
               properties:
                 frames:
@@ -1084,6 +1152,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [isLive, confidence]
                 properties:
                   isLive:
@@ -1144,6 +1213,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [galleryId, scope]
               properties:
                 galleryId:
@@ -1166,6 +1236,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [token, expiresAt]
                 properties:
                   token:
@@ -1213,6 +1284,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [url, events]
               properties:
                 url:
@@ -1229,13 +1301,28 @@ paths:
           content:
             application/json:
               schema:
+                # Cerrado como WebhookEndpoint, más `secret`. Los siete nombres
+                # vacíos repiten los de WebhookEndpointBase: en 3.0.3,
+                # `additionalProperties` solo ve los `properties` de su mismo
+                # objeto, no los de un miembro de `allOf`. Las definiciones
+                # siguen en la base; la igualdad de nombres la vigila
+                # tests/contract/test_closure.py.
                 allOf:
-                  - $ref: '#/components/schemas/WebhookEndpoint'
-                  - type: object
-                    properties:
-                      secret:
-                        type: string
-                        description: Visible únicamente en esta respuesta.
+                  - $ref: '#/components/schemas/WebhookEndpointBase'
+                type: object
+                additionalProperties: false
+                required: [secret]
+                properties:
+                  id: {}
+                  url: {}
+                  events: {}
+                  status: {}
+                  consecutiveFailures: {}
+                  lastDeliveryAt: {}
+                  createdAt: {}
+                  secret:
+                    type: string
+                    description: Visible únicamente en esta respuesta.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1324,6 +1411,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 url:
                   type: string
@@ -1409,6 +1497,7 @@ paths:
           schema:
             type: string
             enum: [pending, delivered, failed]
+          description: Un valor fuera del conjunto se rechaza con `400`.
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -1418,6 +1507,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 properties:
                   items:
                     type: array
@@ -1429,6 +1519,8 @@ paths:
                     type: integer
                   total:
                     type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1466,6 +1558,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [secret]
                 properties:
                   secret:
@@ -1526,6 +1619,7 @@ components:
         type: integer
         minimum: 1
         default: 1
+      description: Empieza en 1. Un valor menor se rechaza con `400`.
 
     PageSize:
       name: pageSize
@@ -1536,9 +1630,29 @@ components:
         minimum: 1
         maximum: 100
         default: 20
-      description: Acotado a 100 para evitar consultas masivas.
+      description: |
+        Acotado a 100 para evitar consultas masivas. Fuera de 1..100 se
+        **rechaza** con `400`; no se acota en silencio, porque un `200` con un
+        tamaño distinto del pedido ocultaría al cliente que su petición no se
+        ha cumplido.
 
   schemas:
+
+    NullValue:
+      description: |
+        Admite únicamente `null`, como rama de un `anyOf` que dice «X o nulo».
+
+        En OAS 3.0.3, `null` no es un tipo, y `nullable: true` añade `null` a
+        los tipos permitidos **solo si `type` está definido en el mismo
+        objeto**. De ahí `type` + `nullable`, y `enum: [null]` para excluir
+        cualquier otro valor: el `type` no decide nada. Y es una rama de
+        `anyOf`, no un `nullable` junto a un `$ref`, que 3.0.3 ignora.
+
+        No se llama `Null`: en YAML 1.1 esa clave sin comillas se lee como
+        nulo, y el componente se quedaba sin nombre (medido en docs#103).
+      type: string
+      nullable: true
+      enum: [null]
 
     ModelName:
       type: string
@@ -1554,6 +1668,7 @@ components:
 
     Gallery:
       type: object
+      additionalProperties: false
       required: [id, name, model, status, identityCount, faceCount, createdAt]
       properties:
         id:
@@ -1571,7 +1686,10 @@ components:
         frozenReason:
           allOf:
             - $ref: '#/components/schemas/FrozenReason'
-          nullable: true
+          description: |
+            **Presente si y solo si `status` es `frozen`**; en cualquier otro
+            caso se omite. No admite `null`. El esquema no puede expresar esa
+            dependencia entre dos campos, así que se declara aquí en prosa.
         identityCount:
           type: integer
         faceCount:
@@ -1589,6 +1707,7 @@ components:
 
     Identity:
       type: object
+      additionalProperties: false
       required: [id, galleryId, fullName, faceCount, createdAt]
       properties:
         id:
@@ -1611,6 +1730,7 @@ components:
 
     Face:
       type: object
+      additionalProperties: false
       required: [id, identityId, galleryId, isBinarized, source, createdAt]
       properties:
         id:
@@ -1634,9 +1754,11 @@ components:
 
     DetectedFace:
       type: object
+      additionalProperties: false
       properties:
         boundingBox:
           type: object
+          additionalProperties: false
           properties:
             x:
               type: integer
@@ -1655,6 +1777,7 @@ components:
 
     VerificationResult:
       type: object
+      additionalProperties: false
       required: [isTheSame, confidence]
       properties:
         isTheSame:
@@ -1677,6 +1800,33 @@ components:
         - gallery.frozen
 
     WebhookEndpoint:
+      description: |
+        Punto de notificación tal como lo devuelven las consultas. **Cerrado**:
+        en particular, no admite `secret`, que solo viaja en el `201` de
+        `createWebhook` y en `rotateWebhookSecret`.
+
+        Las definiciones viven en `WebhookEndpointBase`. Los nombres vacíos
+        repiten los de la base porque, en 3.0.3, `additionalProperties` solo ve
+        los `properties` de su mismo objeto, no los de un miembro de `allOf`.
+      allOf:
+        - $ref: '#/components/schemas/WebhookEndpointBase'
+      type: object
+      additionalProperties: false
+      properties:
+        id: {}
+        url: {}
+        events: {}
+        status: {}
+        consecutiveFailures: {}
+        lastDeliveryAt: {}
+        createdAt: {}
+
+    WebhookEndpointBase:
+      description: |
+        Definiciones de `WebhookEndpoint`. **Abierto a propósito**: es la base
+        que componen dos esquemas cerrados, `WebhookEndpoint` y el `201` de
+        `createWebhook`, y cerrarla rechazaría el `secret` del segundo. No se
+        referencia directamente desde ninguna respuesta.
       type: object
       required: [id, url, events, status, createdAt]
       properties:
@@ -1704,6 +1854,7 @@ components:
 
     WebhookDelivery:
       type: object
+      additionalProperties: false
       required: [id, eventId, eventType, status, attempts, createdAt]
       properties:
         id:
