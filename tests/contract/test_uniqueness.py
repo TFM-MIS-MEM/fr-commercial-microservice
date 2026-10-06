@@ -5,8 +5,10 @@ operación que lo escribe no declara el `409`, ese error sale por una respuesta
 que el contrato no declara. Esta prueba cruza las dos fuentes, y ninguna se
 compara consigo misma:
 
-  - Los índices únicos salen del CÓDIGO (por ahora, de la tabla `UNIQUE` de
-    abajo).
+  - Los índices únicos salen del CÓDIGO: `INDEXES` de `src/documents`, con su
+    código de dominio en `CONFLICTS` y sus campos opcionales en el filtro
+    parcial. Un índice único sin entrada en `CONFLICTS`, o una entrada sin
+    índice, también es un hueco.
   - Las operaciones afectadas salen del CONTRATO: toda operación cuyo
     `requestBody` declare un campo de la clave del índice. Los campos de ámbito
     (`accountId`, que llega en cabecera; `galleryId`, que llega en la ruta) no
@@ -35,7 +37,9 @@ pasar en silencio.
 from dataclasses import dataclass
 
 import pytest
+from pymongo import ASCENDING, IndexModel
 
+from src.documents import CONFLICTS, INDEXES
 from tests.contract.test_closure import _deref, _operations
 
 #: Campos que llegan por cabecera o por ruta, nunca por el cuerpo.
@@ -51,16 +55,32 @@ class Unique:
     optional: tuple[str, ...] = ()
 
 
-#: Los índices únicos que crea el servicio, con su código de dominio.
-UNIQUE = (
-    Unique("galleries", ("accountId", "name"), "GALLERY_NAME_ALREADY_EXISTS"),
-    Unique(
-        "identities",
-        ("galleryId", "externalId"),
-        "EXTERNAL_ID_ALREADY_EXISTS",
-        optional=("externalId",),
-    ),
-)
+def unique_indexes(indexes, conflicts) -> tuple[list[Unique], list[str]]:
+    """Los únicos de `INDEXES`, y los huecos entre `INDEXES` y `CONFLICTS`."""
+    uniques, gaps, seen = [], [], set()
+    for collection, models in indexes.items():
+        for model in models:
+            spec = model.document
+            if not spec.get("unique"):
+                continue
+            seen.add(spec["name"])
+            if spec["name"] not in conflicts:
+                gaps.append(f"{collection} {spec['name']}: único sin código en CONFLICTS")
+                continue
+            uniques.append(
+                Unique(
+                    collection,
+                    tuple(spec["key"]),
+                    conflicts[spec["name"]],
+                    optional=tuple(spec.get("partialFilterExpression", {})),
+                )
+            )
+    gaps += [
+        f"CONFLICTS {name}: no hay índice único con ese nombre"
+        for name in conflicts
+        if name not in seen
+    ]
+    return uniques, gaps
 
 
 def _writers(field: str, spec_ops, deref) -> list[tuple[str, dict]]:
@@ -111,21 +131,50 @@ def _spec_ops():
     return [op for _, _, _, op in _operations()]
 
 
+def _gaps(indexes, conflicts) -> list[str]:
+    uniques, gaps = unique_indexes(indexes, conflicts)
+    return gaps + uniqueness_gaps(uniques, _spec_ops())
+
+
 def test_every_unique_index_has_its_409_declared():
-    assert uniqueness_gaps(UNIQUE, _spec_ops()) == []
+    assert _gaps(INDEXES, CONFLICTS) == []
+
+
+def test_the_service_declares_the_two_unique_indexes_of_claude_md():
+    # Sin esto, vaciar INDEXES dejaría la guardia en verde sin vigilar nada.
+    uniques, _ = unique_indexes(INDEXES, CONFLICTS)
+
+    assert {(u.collection, u.keys, u.optional) for u in uniques} == {
+        ("galleries", ("accountId", "name"), ()),
+        ("identities", ("galleryId", "externalId"), ("externalId",)),
+    }
 
 
 # --------------------------------------------------------------- controles
 
 
-def test_control_a_unique_index_injected_without_409_is_red():
-    # Contra el contrato REAL: `url` está en los cuerpos de createWebhook y
-    # updateWebhook, y ninguno declara 409.
-    injected = Unique("webhook_endpoints", ("accountId", "url"), "URL_ALREADY_EXISTS")
+INJECTED = IndexModel([("accountId", ASCENDING), ("url", ASCENDING)], unique=True)
 
-    assert uniqueness_gaps([injected], _spec_ops()) == [
+
+def test_control_a_unique_index_injected_into_indexes_without_409_is_red():
+    # Contra INDEXES y el contrato REALES, con un índice de más: `url` está en
+    # los cuerpos de createWebhook y updateWebhook, y ninguno declara 409.
+    indexes = {**INDEXES, "webhook_endpoints": [INJECTED]}
+    conflicts = {**CONFLICTS, "accountId_1_url_1": "URL_ALREADY_EXISTS"}
+
+    assert _gaps(indexes, conflicts) == [
         "webhook_endpoints {accountId, url}: createWebhook no declara 409",
         "webhook_endpoints {accountId, url}: updateWebhook no declara 409",
+    ]
+
+
+def test_control_a_unique_index_without_code_or_a_code_without_index_is_red():
+    indexes = {**INDEXES, "webhook_endpoints": [INJECTED]}
+    conflicts = {**CONFLICTS, "huerfano_1": "ORPHAN"}
+
+    assert _gaps(indexes, conflicts) == [
+        "webhook_endpoints accountId_1_url_1: único sin código en CONFLICTS",
+        "CONFLICTS huerfano_1: no hay índice único con ese nombre",
     ]
 
 

@@ -187,6 +187,7 @@ def test_it_refuses_to_start_if_existing_data_breaks_a_unique_index(test_db_uri,
         {
             "event": "mongodb_index_failed",
             "collection": "galleries",
+            "index": "accountId_1_name_1",
             "code": 11000,
             "codeName": "DuplicateKey",
             "logger": "src.core.database",
