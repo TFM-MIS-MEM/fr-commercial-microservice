@@ -1,7 +1,7 @@
 """Galería tal como sale por la API.
 
-Es el modelo de RESPUESTA de `components.schemas.Gallery`, no el modelo de
-dominio: índices, contadores y reconciliación son F2 (#34).
+Es el modelo de RESPUESTA de `components.schemas.Gallery`, no el de persistencia,
+que vive en `src/documents/gallery.py` (#34).
 
 CERRADO (`extra="forbid"`), como `components.schemas.Gallery` desde docs#103:
 el esquema publicado lleva `additionalProperties: false` y la comparación
@@ -29,10 +29,14 @@ nulo», que sería falso.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, model_serializer
 from pydantic.json_schema import SkipJsonSchema
+
+if TYPE_CHECKING:
+    # Solo para el tipo: `src/documents` importa los enums de este módulo.
+    from src.documents.gallery import GalleryDocument
 
 
 class ModelName(str, Enum):
@@ -81,21 +85,21 @@ class Gallery(BaseModel):
         return data
 
     @classmethod
-    def from_document(cls, doc: dict[str, Any]) -> "Gallery":
-        """Del documento de MongoDB a la respuesta, campo a campo.
+    def from_document(cls, stored: "GalleryDocument") -> "Gallery":
+        """Del documento ya leído (`src/documents`) a la respuesta, campo a campo.
 
-        Nunca `cls(**doc)`: el documento lleva `accountId`, y lo que no se nombra
-        aquí no sale.
+        Nunca `cls(**stored.model_dump())`: el documento lleva `accountId`, y lo
+        que no se nombra aquí no sale.
         """
         return cls(
-            id=str(doc["_id"]),
-            name=doc["name"],
-            description=doc.get("description"),
-            model=doc["model"],
-            status=doc["status"],
-            frozenReason=doc.get("frozenReason"),
-            identityCount=doc["identityCount"],
-            faceCount=doc["faceCount"],
-            createdAt=doc["createdAt"],
-            updatedAt=doc.get("updatedAt"),
+            id=str(stored.id),
+            name=stored.name,
+            description=stored.description,
+            model=stored.model,
+            status=stored.status,
+            frozenReason=stored.frozenReason,
+            identityCount=stored.identityCount,
+            faceCount=stored.faceCount,
+            createdAt=stored.createdAt,
+            updatedAt=stored.updatedAt,
         )

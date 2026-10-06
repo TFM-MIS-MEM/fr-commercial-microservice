@@ -25,9 +25,8 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from src.core.errors import ErrorReportError
 from src.core.identity import Identity
+from src.documents.gallery import COLLECTION, GalleryDocument
 from src.models.gallery import Gallery
-
-COLLECTION = "galleries"
 
 
 def _not_found() -> ErrorReportError:
@@ -46,4 +45,6 @@ async def get_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str) ->
     doc = await db[COLLECTION].find_one({"_id": oid, "accountId": identity.account_id})
     if doc is None:
         raise _not_found()
-    return Gallery.from_document(doc)
+    # Un documento corrupto no se sirve: `ValidationError`, y `500`. El porqué,
+    # en src/documents/gallery.py.
+    return Gallery.from_document(GalleryDocument.model_validate(doc))

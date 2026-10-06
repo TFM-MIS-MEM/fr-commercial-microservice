@@ -22,11 +22,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.api import docs, galleries, health
-from src.core.database import connect
+from src.core.database import connect, ensure_indexes
 from src.core.errors import install_error_handlers
 from src.core.logger import get_logger, setup_logger
 from src.core.security_headers import SecurityHeadersMiddleware
 from src.core.settings import Settings, get_settings
+from src.documents import INDEXES
 
 logger = get_logger(__name__)
 
@@ -39,10 +40,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         client = await connect(settings.mongodb_uri)
-        app.state.db = client.get_default_database()
-        # Nunca la URI: cuando lleve credencial (#106), la escribiría en el registro.
-        logger.info("mongodb_connected", database=app.state.db.name)
         try:
+            app.state.db = client.get_default_database()
+            # Nunca la URI: cuando lleve credencial (#106), la escribiría en el registro.
+            logger.info("mongodb_connected", database=app.state.db.name)
+            # Si falla, no se arranca: el porqué está en `ensure_indexes`.
+            await ensure_indexes(app.state.db, INDEXES)
             yield
         finally:
             await client.close()
