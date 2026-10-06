@@ -195,6 +195,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorReport'
+        '409':
+          $ref: '#/components/responses/ConflictGalleryName'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
@@ -309,6 +311,8 @@ paths:
           $ref: '#/components/responses/ForbiddenAccountSuspended'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ConflictGalleryName'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
@@ -379,10 +383,16 @@ paths:
                   type: string
                 externalId:
                   type: string
+                  minLength: 1
                   description: |
                     Identificador del sujeto en el sistema del cliente. Permite
                     correlacionar sin almacenar el identificador interno del
                     servicio. Único dentro de la galería.
+
+                    Si se envía, no puede estar vacío. Omitirlo es la forma de
+                    no darlo: una cadena vacía sería un valor más, y la
+                    segunda identidad sin identificador de la misma galería
+                    chocaría con la primera.
                 image:
                   type: string
                   format: binary
@@ -408,11 +418,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: '`externalId` ya presente en la galería.'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorReport'
+          $ref: '#/components/responses/ConflictExternalId'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
@@ -514,6 +520,7 @@ paths:
                   type: string
                 externalId:
                   type: string
+                  minLength: 1
       responses:
         '200':
           description: Identidad actualizada
@@ -529,6 +536,8 @@ paths:
           $ref: '#/components/responses/ForbiddenAccountSuspended'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ConflictExternalId'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
@@ -1930,6 +1939,36 @@ components:
 
     NotFound:
       description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    ConflictGalleryName:
+      description: |
+        Ya existe en la cuenta una galería con ese nombre
+        (`GALLERY_NAME_ALREADY_EXISTS`).
+
+        **La comparación es exacta**: distingue mayúsculas, minúsculas y
+        acentos. `Empleados` y `empleados` son dos nombres distintos. Es una
+        decisión, no un efecto del almacén: lo garantiza un índice único sin
+        intercalación.
+
+        Afecta a la creación y al cambio de nombre. Renombrar una galería con
+        su propio nombre no es un conflicto.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
+    ConflictExternalId:
+      description: |
+        Ya existe en la galería una identidad con ese `externalId`
+        (`EXTERNAL_ID_ALREADY_EXISTS`).
+
+        La unicidad es por galería, no por cuenta: el mismo `externalId` puede
+        repetirse en galerías distintas. Las identidades sin `externalId` no
+        participan, y pueden convivir tantas como se quiera.
       content:
         application/json:
           schema:
