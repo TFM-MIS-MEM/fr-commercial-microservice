@@ -7,7 +7,8 @@ TFM. Python 3.11, FastAPI y MongoDB.
   operaciones. Es la fuente de verdad: si el código y el contrato discrepan, se
   corrige el código. `/docs` y `/openapi.json` se sirven **desde ese fichero**, no
   desde el código.
-- **Estado:** bootstrap (TFM-MIS-MEM/docs#33). Implementada `getGallery`.
+- **Estado:** implementadas `getGallery` (TFM-MIS-MEM/docs#33) y la inferencia
+  sin estado: `detectFaces`, `verifyPair` y `extractEmbedding` (docs#37).
 
 ## Lo que hay que saber antes de tocarlo
 
@@ -18,9 +19,14 @@ La garantía de que nadie las falsifica es de red: el compose de producción no
 publica ningún puerto, y el de desarrollo solo en `127.0.0.1`. Razonado en
 [`src/core/identity.py`](src/core/identity.py).
 
-**Configuración sin valores por omisión.** `MONGODB_URI` es obligatoria, en el
-código y en el compose de producción. Véase
-[`src/core/settings.py`](src/core/settings.py).
+**Configuración sin valores por omisión.** `MONGODB_URI` y
+`EMBEDDING_TOKEN_SECRET` son obligatorias, en el código y en el compose de
+producción. Véase [`src/core/settings.py`](src/core/settings.py).
+
+**Modelos.** MTCNN y tres EdgeFace (`xs`, `s`, `base`), en CPU, cargados al
+arrancar desde [`checkpoints/`](checkpoints/README.md); sin ellos no arranca.
+Procedencia y licencias en [`src/inference/README.md`](src/inference/README.md):
+**los pesos de EdgeFace son CC BY-NC-SA 4.0, no de uso comercial.**
 
 **Todo error sale como `ErrorReport`** (`{code, message, details?}`), desde un
 único sitio: [`src/core/errors.py`](src/core/errors.py). Validación es `400`,
@@ -48,12 +54,13 @@ correcta de probarlas, porque el servicio confía en ellas.
 ## Pruebas
 
 ```sh
-make install
-TEST_MONGODB_URI=mongodb://127.0.0.1:27019 make test
+make test
 ```
 
-`TEST_MONGODB_URI` es un **servidor**; cada sesión crea su propia base y la borra.
-Sin ella, las pruebas que necesitan base fallan en lugar de saltarse.
+En el **contenedor de desarrollo**, no en el anfitrión: `torch==2.14.1+cpu` solo
+existe para linux. El objetivo levanta el MongoDB del compose y fija
+`TEST_MONGODB_URI`, que es un **servidor**: cada sesión crea su propia base y la
+borra. Sin ella, las pruebas que necesitan base fallan en lugar de saltarse.
 
 ## Dependencias
 
@@ -62,3 +69,9 @@ Sin ella, las pruebas que necesitan base fallan en lugar de saltarse.
 resúmenes (`make lock`). La imagen instala `requirements.txt` con
 `--require-hashes`, y la CI audita **ese** fichero (`make audit`): lo que se
 despliega, no las herramientas de desarrollo.
+
+`torch` y `torchvision` vienen del índice CPU de PyTorch (`+cpu`): el de PyPI
+arrastra CUDA también en aarch64 (imagen de 9,31 GB frente a 1,58 GB).
+`pip-audit` no los encuentra en PyPI y los salta; la CI los audita en un paso
+aparte por su versión sin la etiqueta local. `make lock` tiene que ejecutarse en
+linux, por la misma razón que las pruebas.

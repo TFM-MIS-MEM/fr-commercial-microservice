@@ -28,9 +28,9 @@ from fastapi.testclient import TestClient
 from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from src.core.settings import Settings
 from src.main import create_app
 from tests.conftest import BASE_URL
+from tests.support.settings import settings
 
 ID = {"v": 2, "key": [("_id", ASCENDING)]}
 
@@ -67,7 +67,7 @@ def _indexes(db) -> dict:
 
 def _start(test_db_uri) -> None:
     """Un arranque completo del servicio, con su `lifespan`."""
-    with TestClient(create_app(Settings(mongodb_uri=test_db_uri)), base_url=BASE_URL):
+    with TestClient(create_app(settings(test_db_uri)), base_url=BASE_URL):
         pass
 
 

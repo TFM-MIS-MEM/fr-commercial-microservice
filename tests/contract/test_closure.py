@@ -45,10 +45,11 @@ y ninguna se puede dejar a la validación de respuestas:
      lector.
 
 ALCANCE DEL CIERRE EN LOS CUERPOS, sin redondear: que un campo de más dé `400`
-está PROBADO en cuerpos JSON (`test_rejections.py`). En los 8 cuerpos
-`multipart/form-data` es una obligación del contrato que vigila esta prueba y
-que tienen que cumplir las operaciones que los implementen (F4, F5, F8, F12):
-el mecanismo medido está en `src/models/__init__.py`.
+está PROBADO en cuerpos JSON (`test_rejections.py`) y en los tres cuerpos
+`multipart/form-data` de F5 (`test_inference.py`). En los otros cinco es una
+obligación del contrato que vigila esta prueba y que tienen que cumplir las
+operaciones que los implementen (F4, F8, F12): el mecanismo medido está en
+`src/models/__init__.py`.
 """
 
 import re

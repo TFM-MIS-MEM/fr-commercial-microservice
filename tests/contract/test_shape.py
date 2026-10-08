@@ -17,11 +17,11 @@ from fastapi import FastAPI, Query
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.json_schema import SkipJsonSchema
 
-from src.core.settings import Settings
 from src.main import create_app
 from src.models.gallery import Gallery
 from tests.contract.harness import IMPLEMENTED
 from tests.contract.shape import CannotCompare, compare_operation
+from tests.support.settings import settings
 
 LIST = "/v1/fr/commercial/galleries"
 ONE = "/v1/fr/commercial/galleries/{galleryId}"
@@ -63,11 +63,32 @@ def get_gallery_with(model) -> dict:
 # ------------------------------------------------------------ el servicio real
 
 
+#: Operaciones que se comparan SIN su cuerpo de petición, con el motivo. Ver la
+#: cabecera de `shape.py`.
+MULTIPART = (
+    "multipart: el cierre del cuerpo lo prueban peticiones con una parte de más "
+    "(test_inference.py); la comparación no traduce `contentMediaType`"
+)
+WITHOUT_BODY = {
+    ("post", "/v1/fr/commercial/detection"): MULTIPART,
+    ("post", "/v1/fr/commercial/verification"): MULTIPART,
+    ("post", "/v1/fr/commercial/extract-embeddings"): MULTIPART,
+}
+
+
 @pytest.mark.parametrize("method,path", sorted(IMPLEMENTED))
 def test_every_implemented_operation_matches_the_contract(method, path):
-    generated = create_app(Settings(mongodb_uri="mongodb://unused.invalid:27017/unused")).openapi()
+    generated = create_app(settings()).openapi()
 
-    assert compare_operation(generated, method, path) == []
+    reason = WITHOUT_BODY.get((method, path))
+    assert compare_operation(generated, method, path, without_body=reason) == []
+
+
+def test_an_operation_with_body_is_not_compared_without_a_reason():
+    generated = create_app(settings()).openapi()
+
+    with pytest.raises(CannotCompare, match="cuerpos de petición"):
+        compare_operation(generated, "post", "/v1/fr/commercial/detection")
 
 
 # ---------------------------------------------------- controles, en parejas

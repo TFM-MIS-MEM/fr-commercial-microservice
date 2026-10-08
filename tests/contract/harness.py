@@ -45,7 +45,12 @@ BASE_URL = "http://localhost:8000"
 #: Operaciones implementadas, EXACTAMENTE. La recorren el guardián de identidad
 #: y la comparación estática: una operación nueva obliga a tocar esta línea, y
 #: con ello entra sola en las dos pruebas.
-IMPLEMENTED = {("get", "/v1/fr/commercial/galleries/{galleryId}")}
+IMPLEMENTED = {
+    ("get", "/v1/fr/commercial/galleries/{galleryId}"),
+    ("post", "/v1/fr/commercial/detection"),
+    ("post", "/v1/fr/commercial/verification"),
+    ("post", "/v1/fr/commercial/extract-embeddings"),
+}
 
 
 @cache

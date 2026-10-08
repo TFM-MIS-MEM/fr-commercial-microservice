@@ -17,17 +17,23 @@ Lo que NO está, y por qué, frente a `python-template`:
   - Sin prefijo `/api/v1`, que contradice la convención de rutas.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
+from time import perf_counter
 
+import torch
 from fastapi import FastAPI
+from starlette.concurrency import run_in_threadpool
 
-from src.api import docs, galleries, health
+from src.api import docs, galleries, health, inference
+from src.controllers.inference import Inference
 from src.core.database import connect, ensure_indexes
 from src.core.errors import install_error_handlers
 from src.core.logger import get_logger, setup_logger
 from src.core.security_headers import SecurityHeadersMiddleware
 from src.core.settings import Settings, get_settings
 from src.documents import INDEXES
+from src.inference.engine import MODELS, load_engine, versioned
 
 logger = get_logger(__name__)
 
@@ -46,6 +52,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("mongodb_connected", database=app.state.db.name)
             # Si falla, no se arranca: el porqué está en `ensure_indexes`.
             await ensure_indexes(app.state.db, INDEXES)
+            # Después de los índices. Si falta un fichero de pesos, tampoco se
+            # arranca, y mientras se cargan uvicorn no acepta conexiones: /health
+            # no responde hasta que los modelos están listos
+            # (src/inference/engine.py). Los hilos de torch se fijan aquí para
+            # la carga y, de nuevo, en cada hilo de trabajo antes de inferir
+            # (src/controllers/inference.py): son estado por hilo.
+            if settings.torch_num_threads is not None:
+                torch.set_num_threads(settings.torch_num_threads)
+            started = perf_counter()
+            engine = await run_in_threadpool(load_engine, settings.checkpoints_dir)
+            app.state.inference = Inference(
+                engine=engine,
+                semaphore=asyncio.Semaphore(settings.inference_concurrency),
+                token_secret=settings.embedding_token_secret.get_secret_value(),
+                torch_threads=settings.torch_num_threads,
+            )
+            logger.info(
+                "models_loaded",
+                models=[versioned(m) for m in MODELS],
+                seconds=round(perf_counter() - started, 2),
+                torch_threads=torch.get_num_threads(),
+                inference_concurrency=settings.inference_concurrency,
+            )
             yield
         finally:
             await client.close()
@@ -67,4 +96,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(docs.router)
     app.include_router(galleries.router)
+    app.include_router(inference.router)
     return app

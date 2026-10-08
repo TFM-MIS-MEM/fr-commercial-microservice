@@ -12,11 +12,11 @@ existía implementación conforme: aceptar incumplía el `maximum` y rechazar
 emitía un estado no declarado (medido en #33). Estas pruebas lo afirman en los
 dos sentidos: fuera de rango, `400` conforme; dentro, `200` conforme.
 
-ALCANCE: el campo de más se prueba aquí en un cuerpo JSON. Los 8 cuerpos
-`multipart/form-data` quedan fuera: `python-multipart` no está en el árbol
-fijado y probarlos exigiría añadirlo solo para una aplicación de juguete. En
-ellos el `400` por campo de más es una obligación del contrato, vigilada por
-`test_closure.py`, que cumplirán F4, F5, F8 y F12 con el mecanismo descrito en
+ALCANCE: el campo de más se prueba aquí en un cuerpo JSON. Los cuerpos
+`multipart/form-data` se prueban sobre las operaciones reales a medida que se
+implementan: los tres de F5 en `test_inference.py`. En los demás el `400` por
+campo de más es una obligación del contrato, vigilada por `test_closure.py`,
+que cumplirán F4, F8 y F12 con el mecanismo descrito en
 `src/models/__init__.py`.
 """
 

@@ -22,18 +22,30 @@ el repositorio divulgue como ejemplo, con el mismo criterio que
 `auth-microservice/src/config/internalSecret.js`: se rechaza lo que CONSTA
 público, no lo que parece débil.
 
+`EMBEDDING_TOKEN_SECRET` sigue la misma regla: sin valor por omisión, y el
+servicio no arranca si falta o está en blanco. `docker-compose.yml` la exige con
+`:?`; `docker-compose.dev.yml` fija un valor de desarrollo explícito. El servicio
+no distingue hoy el entorno de desarrollo, así que no puede rechazar ese literal
+fuera de él: es TFM-MIS-MEM/docs#117, y hasta F7 nadie verifica el token.
+
 No se lee ningún fichero `.env` desde aquí. La configuración entra por el
 entorno del proceso ---el compose la pone ahí--- y en ningún otro sitio: un
 `.env` leído en silencio es una segunda fuente que las pruebas no controlan.
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pymongo.errors import InvalidURI
 from pymongo.uri_parser import parse_uri
+
+#: Los pesos viajan con el código (`checkpoints/`, en la raíz del repositorio y
+#: copiado en la imagen): su ubicación es un hecho del repositorio, no del
+#: despliegue, y por eso tiene valor por omisión.
+CHECKPOINTS_DIR = Path(__file__).resolve().parents[2] / "checkpoints"
 
 
 class ConfigurationError(RuntimeError):
@@ -49,6 +61,18 @@ class Settings(BaseSettings):
     # Con valor por omisión, y legítimo: está acotado a un conjunto cerrado,
     # y equivocarse aquí solo cambia cuánto se escribe en el registro.
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+
+    # Sin valor por omisión, como `mongodb_uri`. `SecretStr` para que no salga
+    # en claro en un `repr` ni en un registro.
+    embedding_token_secret: SecretStr
+
+    checkpoints_dir: Path = CHECKPOINTS_DIR
+
+    # Para la campaña de medición. Por omisión, los hilos que elija torch (uno
+    # por CPU visible) y una sola inferencia a la vez; los valores de la campaña
+    # se fijan en la sesión del instrumento.
+    torch_num_threads: int | None = Field(default=None, ge=1)
+    inference_concurrency: int = Field(default=1, ge=1)
 
     @field_validator("mongodb_uri")
     @classmethod
@@ -66,6 +90,13 @@ class Settings(BaseSettings):
             raise ValueError("MONGODB_URI no nombra la base de datos (…/<base>)")
         # Sin normalizar: lo que se usa es la cadena tal cual la fijó el
         # despliegue.
+        return value
+
+    @field_validator("embedding_token_secret")
+    @classmethod
+    def _embedding_token_secret(cls, value: SecretStr) -> SecretStr:
+        if value.get_secret_value().strip() == "":
+            raise ValueError("EMBEDDING_TOKEN_SECRET está en blanco")
         return value
 
 

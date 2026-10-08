@@ -33,8 +33,8 @@ from fastapi.testclient import TestClient
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
-from src.core.settings import Settings
 from src.main import create_app
+from tests.support.settings import settings
 
 # Un `servers` del contrato: openapi-core rechaza un anfitrión que no figure en
 # él (`ServerNotFound ... http://testserver`), medido en #33.
@@ -95,6 +95,6 @@ def db(sync_db):
 
 @pytest.fixture
 def client(test_db_uri, db):
-    app = create_app(Settings(mongodb_uri=test_db_uri))
+    app = create_app(settings(test_db_uri))
     with TestClient(app, base_url=BASE_URL) as test_client:
         yield test_client

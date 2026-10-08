@@ -6,6 +6,8 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
+        # Los pesos de los modelos se versionan a propósito (checkpoints/README.md).
+        exclude: ^checkpoints/
 
   # Mismas herramientas y versiones que la CI: las del entorno, fijadas en
   # requirements-dev.txt, y no una copia aparte con su propio `rev` que envejece.
@@ -29,10 +31,11 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
-      # Necesita TEST_MONGODB_URI: véase .env.example.
+      # En el contenedor de desarrollo, como `make test`: torch `+cpu` no existe
+      # para macOS.
       - id: pytest
         name: pytest
-        entry: pytest
+        entry: make test
         language: system
         pass_filenames: false
         always_run: true

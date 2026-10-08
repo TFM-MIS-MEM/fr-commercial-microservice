@@ -38,6 +38,13 @@ COPY ./src ./src
 COPY ./openapi ./openapi
 
 RUN chown -R appuser:appgroup /app
+
+# Los pesos de MTCNN y de los tres EdgeFace (~96 MB). Sin ellos el servicio se
+# niega a arrancar (src/inference/engine.py); no se descargan en tiempo de
+# ejecución. DESPUÉS del `chown`, a propósito: antes, el `chown -R` los copiaba
+# enteros a una capa nueva (medido en #37: 97,3 MB repetidos). Así quedan de
+# root y el servicio solo puede leerlos, que es lo único que necesita.
+COPY ./checkpoints ./checkpoints
 USER appuser
 
 EXPOSE 8000
