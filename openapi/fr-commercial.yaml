@@ -849,6 +849,16 @@ paths:
         Devuelve las coordenadas de los rostros detectados y, opcionalmente,
         los recortes correspondientes.
 
+        Los rostros se devuelven **ordenados por confianza, de mayor a
+        menor**; con `onlyFirst`, solo el de mayor confianza. Una imagen sin
+        rostros no es un error: responde `200` con `faces` vacío y `numFaces`
+        a `0`, con `onlyFirst` o sin él. Las coordenadas son píxeles de la
+        imagen original, recortadas a sus bordes. El recorte es el rostro
+        **alineado** de 112 × 112 que recibe el modelo, en PNG.
+
+        No admite `model`: el detector es el mismo para todos los modelos de
+        reconocimiento.
+
         **Patrón:** COMPUTATION FUNCTION. No accede a estado alguno del
         servidor: con la misma entrada devuelve siempre el mismo resultado.
 
@@ -868,8 +878,6 @@ paths:
                 image:
                   type: string
                   format: binary
-                model:
-                  $ref: '#/components/schemas/ModelName'
                 onlyFirst:
                   type: boolean
                   default: false
@@ -897,7 +905,15 @@ paths:
                   numFaces:
                     type: integer
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Petición mal formada (`BAD_REQUEST`); imagen que no se puede
+            decodificar (`INVALID_IMAGE`); o imagen de más de 4096 píxeles de
+            ancho o de alto (`IMAGE_TOO_LARGE`), comprobado con las dimensiones
+            de su cabecera antes de decodificarla.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -915,6 +931,26 @@ paths:
       description: |
         Compara dos rostros aportados por el cliente, sin intervención de
         galería alguna.
+
+        **Comparación.** De cada imagen se toma el rostro de mayor confianza
+        y se extrae su vector con `model` (`xs` si no se indica). Los dos
+        vectores se binarizan con LSSC ---el mismo código de 1536 bits que
+        guarda el índice--- y se comparan por distancia de Hamming `d`:
+        `confidence = 1 − d/1536`, y `isTheSame` es `confidence ≥ threshold`.
+        Es el mismo comparador que las operaciones contra galería, de modo que
+        un mismo `threshold` significa lo mismo en todas.
+
+        Sin `threshold`, se aplica el del modelo, fijado en LFW con una tasa de
+        falsa aceptación de 1e-4: `xs` 0,6882 (d ≤ 479), `s` 0,6966 (d ≤ 466) y
+        `base` 0,6615 (d ≤ 520). `thresholdUsed` devuelve el aplicado, y
+        `model`, el modelo con su versión (`xs-v1`).
+
+        **Solo con imágenes, por ahora.** `image1` e `image2` son obligatorias.
+        Las entradas por vector (`embedding1`, `embeddingToken1`,
+        `embedding2`, `embeddingToken2`) se rechazan con `400`
+        `EMBEDDING_INPUT_NOT_SUPPORTED` mientras no se verifique el token de
+        procedencia: aceptarlas sin verificarlo sería admitir vectores de
+        procedencia desconocida.
 
         **Patrón:** COMPUTATION FUNCTION.
 
@@ -962,7 +998,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/VerificationResult'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Petición mal formada (`BAD_REQUEST`); imagen que no se puede
+            decodificar (`INVALID_IMAGE`); o imagen de más de 4096 píxeles de
+            ancho o de alto (`IMAGE_TOO_LARGE`), comprobado con las dimensiones
+            de su cabecera antes de decodificarla.
+
+            Además: falta `image1` o `image2` (`BAD_REQUEST`); alguna imagen
+            no contiene rostros (`NO_FACE_DETECTED`); o la petición aporta
+            vectores (`EMBEDDING_INPUT_NOT_SUPPORTED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -989,6 +1037,17 @@ paths:
 
         El formato binarizado es la **representación nativa del índice**, no una
         mera opción de salida.
+
+        **Formato de `embedding`.** De la imagen se toma el rostro de mayor
+        confianza. Con `returnBinarized` (por omisión), el código LSSC de 1536
+        bits (512 dimensiones × 3 bits), empaquetado en 192 bytes con el bit
+        más significativo primero. Sin él, el vector real: 512 `float32` en
+        orden little-endian, 2048 bytes, **sin normalizar**, que es el mismo
+        vector que se binariza. Ambos, en base64.
+
+        **Canal.** Una petición del canal web recibe `401`
+        `API_CHANNEL_REQUIRED`: para esta operación, un JWT no es una
+        credencial admitida.
 
         **Patrón:** COMPUTATION FUNCTION. **Consumo:** `1 × peso_modelo`.
       security:
@@ -1035,9 +1094,25 @@ paths:
                   isBinarized:
                     type: boolean
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Petición mal formada (`BAD_REQUEST`); imagen que no se puede
+            decodificar (`INVALID_IMAGE`); o imagen de más de 4096 píxeles de
+            ancho o de alto (`IMAGE_TOO_LARGE`), comprobado con las dimensiones
+            de su cabecera antes de decodificarla.
+
+            Además: la imagen no contiene rostros (`NO_FACE_DETECTED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: |
+            Credencial ausente o inválida, o credencial del canal web
+            (`API_CHANNEL_REQUIRED`): esta operación solo admite `apiKeyAuth`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
         '403':
           $ref: '#/components/responses/ForbiddenQuotaOrModel'
         '429':
@@ -1801,11 +1876,19 @@ components:
         confidence:
           type: number
           format: float
+          minimum: 0
+          maximum: 1
+          description: |
+            `1 − d/1536`, con `d` la distancia de Hamming entre los códigos
+            LSSC de los dos rostros.
         thresholdUsed:
           type: number
           format: float
+          minimum: 0
+          maximum: 1
         model:
           type: string
+          description: Modelo con su versión, por ejemplo `xs-v1`.
 
     WebhookEvent:
       type: string
