@@ -46,6 +46,10 @@ services:
       # el motivo equivocado; medido en #33.
       - "MONGODB_URI=${MONGODB_URI:?obligatorio y sin defecto: mongodb://<host>:<puerto>/<base>}"
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Firma de los tokens de procedencia de `extractEmbedding`. Misma guarda
+      # en dos planos que MONGODB_URI. Generarlo con
+      # `python -c "import secrets; print(secrets.token_hex(32))"`.
+      - "EMBEDDING_TOKEN_SECRET=${EMBEDDING_TOKEN_SECRET:?obligatorio y sin defecto: python -c 'import secrets; print(secrets.token_hex(32))'}"
     depends_on:
       - fr-commercial-mongodb
     networks:

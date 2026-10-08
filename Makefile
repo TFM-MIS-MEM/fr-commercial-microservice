@@ -6,7 +6,7 @@ help:
 	@echo "make audit       Audita el árbol de PRODUCCIÓN (requirements.txt)."
 	@echo "make dev         Arranca el servicio en local (exige MONGODB_URI)."
 	@echo "make dev-docker  Levanta servicio + MongoDB con docker-compose.dev.yml."
-	@echo "make test        Pruebas (exige TEST_MONGODB_URI: servidor, sin base)."
+	@echo "make test        Pruebas, DENTRO del contenedor de desarrollo (exige la red tfm-network)."
 	@echo "make lint | lint-fix | format | check (bandit) | clean"
 
 install:
@@ -40,8 +40,16 @@ lint-fix:
 format:
 	ruff format src tests
 
+# En el contenedor, no en el anfitrión: `torch==2.14.1+cpu` solo existe para
+# linux, y la CI lo instala igual en x86_64. `run` levanta el MongoDB del compose
+# y espera a que esté sano; las pruebas usan un servidor, sin base (conftest).
+#
+# `env -u LOG_LEVEL`: el compose fija `LOG_LEVEL=debug`, y la prueba del valor
+# por omisión depende de que la variable no exista (TFM-MIS-MEM/docs#110).
 test:
-	pytest
+	docker compose -f docker-compose.dev.yml run --rm \
+		-e TEST_MONGODB_URI=mongodb://fr-commercial-mongodb:27017 \
+		fr-commercial env -u LOG_LEVEL pytest
 
 check:
 	bandit -c pyproject.toml -r src

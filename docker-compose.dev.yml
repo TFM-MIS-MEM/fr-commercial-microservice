@@ -29,6 +29,10 @@ services:
       # a ver nunca la variable ausente. La guarda tiene que estar en las dos
       # capas o no está.
       MONGODB_URI: mongodb://fr-commercial-mongodb:27017/fr-commercial-db
+      # Valor de DESARROLLO, explícito y publicado en este fichero. El servicio
+      # no distingue hoy el entorno y no puede rechazarlo fuera de aquí:
+      # TFM-MIS-MEM/docs#117. Hasta F7 (#39) nadie verifica el token.
+      EMBEDDING_TOKEN_SECRET: dev-only-embedding-token-secret-published-in-docker-compose-dev
     ports:
       # Publicado SÓLO en el bucle local. El servicio confía en las cabeceras de
       # identidad que escribe la pasarela, de modo que quien lo alcance por este
