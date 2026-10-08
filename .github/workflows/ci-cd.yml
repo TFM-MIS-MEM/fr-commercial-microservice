@@ -86,11 +86,22 @@ jobs:
       # con «Dependency not found on PyPI» (medido en #37). Se auditan aquí por su
       # versión sin la etiqueta local, que es el mismo código publicado en PyPI.
       # Medido: limpio con torch 2.14.1; el control con 2.5.1 da 22 avisos.
+      #
+      # Las versiones se LEEN de requirements.txt, no se escriben aquí: el paso
+      # audita siempre lo que se instala. Si falta alguna de las dos con `+cpu`,
+      # falla en lugar de auditar menos de lo que debe.
       - name: Security audit (torch y torchvision, sin la etiqueta +cpu)
         run: |
-          grep -E '^(torch|torchvision)==' requirements.txt | sed -E 's/\+cpu.*//' > /tmp/torch-audit.txt
+          : > /tmp/torch-audit.txt
+          for pkg in torch torchvision; do
+            pin=$(grep -oE "^${pkg}==[^ +]+\+cpu" requirements.txt || true)
+            if [ "$(printf '%s' "$pin" | grep -c .)" -ne 1 ]; then
+              echo "::error::requirements.txt no fija exactamente un ${pkg}==<versión>+cpu"
+              exit 1
+            fi
+            printf '%s\n' "${pin%+cpu}" >> /tmp/torch-audit.txt
+          done
           cat /tmp/torch-audit.txt
-          test "$(wc -l < /tmp/torch-audit.txt)" -eq 2
           for intento in 1 2 3; do
             if pip-audit -r /tmp/torch-audit.txt --no-deps --disable-pip --progress-spinner off; then
               exit 0
