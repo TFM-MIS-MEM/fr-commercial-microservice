@@ -1,0 +1,36 @@
+EdgeFace — pesos preentrenados
+==============================
+
+Ficheros a los que se aplica este aviso:
+
+  edgeface_xs_gamma_06.pt
+  edgeface_s_gamma_05.pt
+  edgeface_base.pt
+
+Autoría: Anjith George, Christophe Ecabert, Hatef Otroshi Shahreza,
+Ketan Kotwal y Sébastien Marcel, Idiap Research Institute
+(Martigny, Suiza).
+
+Licencia: Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+International (CC BY-NC-SA 4.0).
+  Resumen: https://creativecommons.org/licenses/by-nc-sa/4.0/
+  Texto legal: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+
+Es la licencia que declaran las fichas de Hugging Face de estos mismos
+modelos:
+  https://huggingface.co/Idiap/EdgeFace-XS-GAMMA
+  https://huggingface.co/Idiap/EdgeFace-S-GAMMA
+  https://huggingface.co/Idiap/EdgeFace-Base
+
+Los ficheros son byte a byte los del directorio `checkpoints/` del
+repositorio https://github.com/otroshi/edgeface (comprobado con
+`git hash-object`; véase checkpoints/README.md). Ese repositorio solo
+declara BSD-3-Clause, que cubre su código; para los pesos se aplica la
+licencia de las fichas, que es la más restrictiva de las dos. Los modelos se
+entrenaron con WebFace260M, cuyos términos son de investigación no
+comercial.
+
+Uso en este repositorio: académico (Trabajo Fin de Máster), sin finalidad
+comercial. Los pesos se redistribuyen sin modificar y bajo esta misma
+licencia. UN DESPLIEGUE COMERCIAL DEL SERVICIO NECESITARÍA OTROS PESOS O UNA
+LICENCIA DISTINTA DE SUS TITULARES.
