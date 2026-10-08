@@ -81,6 +81,31 @@ jobs:
           echo "::error::PyPI no ha respondido tras 3 intentos"
           exit 1
 
+      # El paso anterior NO audita torch ni torchvision, y sale con 0: pip-audit
+      # consulta PyPI, donde `2.14.1+cpu` y `0.29.1+cpu` no existen, y los salta
+      # con «Dependency not found on PyPI» (medido en #37). Se auditan aquí por su
+      # versión sin la etiqueta local, que es el mismo código publicado en PyPI.
+      # Medido: limpio con torch 2.14.1; el control con 2.5.1 da 22 avisos.
+      - name: Security audit (torch y torchvision, sin la etiqueta +cpu)
+        run: |
+          grep -E '^(torch|torchvision)==' requirements.txt | sed -E 's/\+cpu.*//' > /tmp/torch-audit.txt
+          cat /tmp/torch-audit.txt
+          test "$(wc -l < /tmp/torch-audit.txt)" -eq 2
+          for intento in 1 2 3; do
+            if pip-audit -r /tmp/torch-audit.txt --no-deps --disable-pip --progress-spinner off; then
+              exit 0
+            fi
+            if ! curl -sf --max-time 20 -o /dev/null https://pypi.org/pypi/pip/json; then
+              echo "::warning::PyPI no responde (intento $intento/3); reintentando en 30 s"
+              sleep 30
+              continue
+            fi
+            echo "::error::pip-audit ha encontrado vulnerabilidades en torch o torchvision"
+            exit 1
+          done
+          echo "::error::PyPI no ha respondido tras 3 intentos"
+          exit 1
+
       - name: Run tests with coverage
         env:
           TEST_MONGODB_URI: mongodb://localhost:27017

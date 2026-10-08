@@ -13,3 +13,29 @@ pydantic-settings>=2.15
 pymongo>=4.18
 pyyaml>=6.0
 structlog>=26.1
+
+# Inferencia (F5, #37). En CPU, siempre: el índice de PyPI sirve `torch` con
+# CUDA también para linux/aarch64 ---medido: 2.14.1+cu130, 3,3 GB de paquetes
+# `nvidia-*`, imagen de 9,31 GB frente a 1,58 GB---. Las versiones `+cpu` solo
+# existen en el índice de PyTorch, y el pin con la etiqueta local es lo que
+# impide que el resolvedor elija la de PyPI. `torchvision` se fija igual porque
+# `timm` la exige, y la de PyPI va enlazada contra CUDA.
+#
+# El mismo `2.14.1+cpu` existe para linux/aarch64 (Docker en el Mac) y
+# linux/x86_64 (la CI), así que un solo árbol fijado sirve para los dos. No
+# existe para macOS: las pruebas se ejecutan en el contenedor (`make test`).
+# Los resúmenes de requirements.txt cubren también los paquetes que lleguen
+# por el índice adicional.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+# La arquitectura EdgeNeXt de EdgeFace es la de timm (src/inference/edgeface).
+timm>=1.0.30
+numpy>=2.4
+pillow>=12.3
+# Solo `warpAffine`, en la alineación de MTCNN. La variante sin interfaz
+# gráfica: no arrastra bibliotecas de X11 a la imagen.
+opencv-python-headless>=5.0
+# FastAPI la exige para `File()` y `Form()`; entra con la primera operación
+# multipart (src/models/__init__.py).
+python-multipart>=0.0.20
