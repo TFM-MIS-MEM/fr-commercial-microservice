@@ -9,9 +9,11 @@ un campo de más tiene que dar el `400` que declaran todas las operaciones con
 cuerpo.
 
 LO QUE ESTÁ PROBADO Y LO QUE ES OBLIGACIÓN. El `400` por campo de más está
-probado en cuerpos JSON (`tests/contract/test_rejections.py`). En los 8 cuerpos
-`multipart/form-data` es una obligación del contrato, que vigila
-`tests/contract/test_closure.py` y que cumple quien implemente F4, F5, F8 y F12.
+probado en cuerpos JSON (`tests/contract/test_rejections.py`) y, desde F5 (#37),
+en los tres cuerpos `multipart/form-data` de la inferencia sin estado
+(`tests/contract/test_inference.py`). En los otros cinco es una obligación del
+contrato, que vigila `tests/contract/test_closure.py` y que cumple quien
+implemente F4, F8 y F12.
 Medido en #103 con FastAPI 0.141.1 y Starlette 1.7.0:
 
   - Parámetros `Form()` y `File()` sueltos: una parte de más, de texto o de
@@ -27,6 +29,8 @@ Medido en #103 con FastAPI 0.141.1 y Starlette 1.7.0:
     la obligación pasa a ser una lista explícita de las partes declaradas y un
     `400` ante cualquier otra.
 
-Y un requisito previo: `python-multipart`, que FastAPI exige para `Form` y
-`File`, NO está en el árbol fijado (`requirements.txt`). Entra con F4.
+`python-multipart`, que FastAPI exige para `Form` y `File`, entró en el árbol
+fijado con F5 (#37). F5 no lee el flujo a mano: usa el modelo anotado con
+`File()` y asume el coste de leer el cuerpo antes de la identidad; el tope de
+bytes y la lectura tras la identidad son TFM-MIS-MEM/docs#116.
 """

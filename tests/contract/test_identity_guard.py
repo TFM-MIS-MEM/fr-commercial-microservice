@@ -11,8 +11,9 @@ Y se ata al contrato por los dos lados, para que no pueda pasar vacío:
   - El contrato declara 27 operaciones y todas con `security`. Si ese número
     cambia, esta prueba lo dice.
   - El conjunto de operaciones implementadas es EXACTAMENTE el esperado. Hoy,
-    `{getGallery}`. Una operación nueva obliga a tocar `harness.IMPLEMENTED`, y
-    con ello a que la prueba de 401 y la comparación estática la recorran.
+    `{getGallery}` y las tres de inferencia de F5. Una operación nueva obliga a
+    tocar `harness.IMPLEMENTED`, y con ello a que la prueba de 401 y la
+    comparación estática la recorran.
 
 PARA F3: EL GUARDIÁN SOLO VE LO QUE SALE EN `app.openapi()`. Una operación
 montada con `include_in_schema=False` no aparece ahí, así que ni rompe la
@@ -25,9 +26,9 @@ import re
 
 import pytest
 
-from src.core.settings import Settings
 from src.main import create_app
 from tests.contract.harness import IMPLEMENTED, SPEC, assert_bare_error, assert_satisfies_contract
+from tests.support.settings import settings
 
 METHODS = ("get", "post", "put", "patch", "delete")
 
@@ -42,7 +43,7 @@ def contract_operations():
 
 
 def served_operations():
-    app = create_app(Settings(mongodb_uri="mongodb://unused.invalid:27017/unused"))
+    app = create_app(settings())
     generated = app.openapi()
     return {(method, path) for path, item in generated["paths"].items() for method in item}
 

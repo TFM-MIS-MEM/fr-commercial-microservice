@@ -19,6 +19,12 @@ servicio nunca emite; en esta comparación serían ruido. Los errores son cosa d
 
 Los cuerpos de petición llegan en F3; hasta que esta comparación sepa hacerlo,
 se NIEGA a comparar una operación que lleve uno, en lugar de darla por buena.
+La única salida es nombrar el motivo (`without_body`), y entonces compara los
+parámetros y las respuestas y deja fuera SOLO el cuerpo. La usan las tres
+operaciones multipart de F5 (#37): FastAPI publica `UploadFile` con
+`contentMediaType`, de OpenAPI 3.1, que esta traducción no sabe comparar, y el
+cierre de esos cuerpos lo prueban peticiones reales con una parte de más
+(`tests/contract/test_inference.py`).
 
 EL NORMALIZADOR SE NIEGA ANTE LO QUE NO SABE COMPARAR. FastAPI genera OpenAPI
 3.1 y el contrato es 3.0.3, así que antes de comparar hay que traducir. Toda
@@ -180,11 +186,18 @@ def _success(spec: dict, path: str, method: str) -> dict:
     return {st: _deref(spec, r) for st, r in responses.items() if st.startswith("2")}
 
 
-def compare_operation(generated: dict, method: str, path: str) -> list[str]:
-    """Diferencias entre la operación generada y la canónica; `[]` si coinciden."""
-    for spec in (generated, SPEC):
-        if "requestBody" in spec["paths"][path][method]:
-            raise CannotCompare(f"{method} {path}: cuerpos de petición, no hasta F3")
+def compare_operation(
+    generated: dict, method: str, path: str, *, without_body: str | None = None
+) -> list[str]:
+    """Diferencias entre la operación generada y la canónica; `[]` si coinciden.
+
+    `without_body` es el MOTIVO por el que se compara sin el cuerpo de petición;
+    sin él, una operación con cuerpo no se compara.
+    """
+    if without_body is None:
+        for spec in (generated, SPEC):
+            if "requestBody" in spec["paths"][path][method]:
+                raise CannotCompare(f"{method} {path}: cuerpos de petición, no hasta F3")
     return _compare_parameters(generated, method, path) + _compare_success(generated, method, path)
 
 

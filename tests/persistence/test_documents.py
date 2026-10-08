@@ -17,7 +17,6 @@ from bson import ObjectId
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from src.core.settings import Settings
 from src.documents.face import FaceDocument, FaceSource
 from src.documents.gallery import GalleryDocument
 from src.documents.identity import IdentityDocument
@@ -26,6 +25,7 @@ from src.models.gallery import FrozenReason, GalleryStatus, ModelName
 from tests.conftest import BASE_URL
 from tests.support.identity import gateway_headers
 from tests.support.seed import seed_gallery
+from tests.support.settings import settings
 
 GALLERY_ID = ObjectId("66f0000000000000000000aa")
 IDENTITY_ID = ObjectId("66f0000000000000000000cc")
@@ -105,7 +105,7 @@ def test_a_corrupt_gallery_is_a_500_when_read(test_db_uri, db, fields):
     # invariante no se sirve. Mejor un 500 que una respuesta que el contrato
     # declara imposible. Cliente propio: el común relanza la excepción en vez de
     # devolver la respuesta que el cliente vería.
-    app = create_app(Settings(mongodb_uri=test_db_uri))
+    app = create_app(settings(test_db_uri))
     with TestClient(app, base_url=BASE_URL, raise_server_exceptions=False) as client:
         gallery_id = seed_gallery(db, "acc-a", **fields)
         res = client.get(
