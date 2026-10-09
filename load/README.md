@@ -147,6 +147,20 @@ python3 load/most.py most --serie campaign --op verifyPair --model xs \
 python3 load/analyze.py
 ```
 
+**La cadena nocturna** hace lo mismo sin intervención: criba de las siete
+configuraciones (1 worker con 8×1, 4×2, 2×4 y 1×8 hilos × concurrencia; 2, 4 y
+8 workers con 1×1) → MST de las dos de mayor MIT → deriva a 0,9·MIT de la de
+mayor MST → MoST completo de verifyPair xs con ella. **La deriva es la
+puerta**: si no cumple las tres restricciones, con tercios de 5 min, la cadena
+termina sin medir xs. Una configuración que falla en la criba se anota y se
+salta; una precondición incumplida detiene la cadena entera.
+
+```sh
+nohup caffeinate -i python3 load/most.py chain > load/results/chain.log 2>&1 &
+cat load/results/chain-status.json    # estado, etapa, resultados y motivo de parada
+tail -f load/results/chain.log        # una línea por corrida
+```
+
 Python 3.9 del sistema, solo biblioteca estándar. `most.py` arranca y para el
 compose; el secreto de `fr` lo genera en cada ejecución y no lo escribe en
 ningún sitio.
@@ -162,7 +176,9 @@ lado, `.meta.json` guarda:
 - commit e imágenes;
 - el estado de `fr` antes y después: procesos, reinicios, OOM y pico de memoria
   del cgroup;
-- el del anfitrión: corriente, bajo consumo, `uptime` y otros contenedores.
+- el del anfitrión al principio y al final: corriente, bajo consumo, `uptime`,
+  swap usado (`sysctl vm.swapusage`) y otros contenedores. El crecimiento del
+  swap durante la corrida queda en `swap_growth_mb`; no la invalida, pero se ve.
 
 `analyze.py` no lee esos veredictos: vuelve a evaluar cada resumen con
 `criteria.py`, y avisa si no coinciden.

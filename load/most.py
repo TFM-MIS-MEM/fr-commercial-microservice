@@ -10,6 +10,7 @@ resultado final: eso es `analyze.py`, desde lo guardado.
     python3 load/most.py most  ... --only mit --bracket 5 25 --no-confirm   # criba
     python3 load/most.py most  ... --only mst --mit 12.5                     # MST con MIT dado
     python3 load/most.py drift --serie S ... --rate 11 --window 900 --slices 15
+    python3 load/most.py chain                                               # la noche
 
 EL PROCEDIMIENTO
 - Cada corrida: 30 s de calentamiento al 50 % (descartados) y la ventana medida.
@@ -33,6 +34,12 @@ en marcha que no sea de este compose.
 CORRIDA INVÁLIDA (se repite, hasta dos veces, y no cuenta como fallo de ninguna
 restricción): fr se reinicia, cambia el conjunto de workers de uvicorn (uno
 muere y el supervisor lo sustituye) u hay un OOM en su cgroup.
+
+LA CADENA NOCTURNA (`chain`): criba de las siete configuraciones → MST de las
+dos de mayor MIT → deriva de 15 min a 0,9·MIT de la de mayor MST → MoST completo
+de verifyPair xs con ella. La deriva es la puerta: si no cumple las tres
+restricciones con tercios de 5 min, la cadena termina sin medir xs. El estado,
+en `results/chain-status.json`.
 
 Python 3.9, solo biblioteca estándar: es el intérprete del anfitrión.
 """
@@ -88,6 +95,10 @@ class Abort(SystemExit):
     pass
 
 
+class PreconditionFailed(Abort):
+    """La máquina dejó de estar en condiciones: la cadena entera se detiene."""
+
+
 def sh(cmd: list[str], env: dict | None = None, check: bool = True) -> str:
     done = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if check and done.returncode != 0:
@@ -124,8 +135,16 @@ def host_state() -> dict:
         "caffeinate": subprocess.run(["pgrep", "-x", "caffeinate"], capture_output=True).returncode
         == 0,
         "uptime": sh(["uptime"]).strip(),
+        "swap_used_mb": swap_used_mb(),
         "other_containers": others,
     }
+
+
+def swap_used_mb() -> float | None:
+    """`used` de `sysctl vm.swapusage`. No invalida nada: tiene que poder verse."""
+    raw = sh(["sysctl", "-n", "vm.swapusage"], check=False)
+    found = re.search(r"used\s*=\s*([\d.]+)M", raw)
+    return float(found.group(1)) if found else None
 
 
 def preconditions(skip: bool) -> dict:
@@ -140,7 +159,7 @@ def preconditions(skip: bool) -> dict:
     state["problems"] = problems
     state["skipped"] = skip
     if problems and not skip:
-        raise Abort("Precondiciones incumplidas, no se mide: " + "; ".join(problems))
+        raise PreconditionFailed("Precondiciones incumplidas, no se mide: " + "; ".join(problems))
     return state
 
 
@@ -349,6 +368,8 @@ class Runner:
             if done.returncode != 0 or not out.exists():
                 reason = reason or f"k6 terminó con {done.returncode}: {done.stderr[-500:]}"
             verdict = evaluate(json.loads(out.read_text())) if out.exists() else None
+            swaps = (host_before["swap_used_mb"], host_after["swap_used_mb"])
+            swap_growth = round(swaps[1] - swaps[0], 2) if None not in swaps else None
             meta = {
                 "kind": kind,
                 "rate": rate,
@@ -369,12 +390,14 @@ class Runner:
                 "cpuset": {"fr": "2-9", "calib": "2-9", "k6": "0-1", "mongo": "0-1"},
                 "host_before": host_before,
                 "host_after": host_after,
+                "swap_growth_mb": swap_growth,
                 "service_before": before,
                 "service_after": after,
                 "k6_stdout": done.stdout.strip(),
             }
             meta_text = json.dumps(meta, indent=1, ensure_ascii=False)
             (self.dir / f"{stem}.meta.json").write_text(meta_text)
+            self.last = meta
             line = f"{stem}: " + (
                 "INVÁLIDA, " + reason
                 if reason
@@ -384,6 +407,8 @@ class Runner:
                 f" · mediana {verdict['med_first']:.0f}→{verdict['med_last']:.0f} ms"
                 f" (×{verdict['ratio']:.2f})"
             )
+            if swap_growth:
+                line += f" · swap {swap_growth:+.0f} MB"
             print(line, flush=True)
             if reason is None:
                 return verdict["pass"]
@@ -468,8 +493,8 @@ def profile_name(args: argparse.Namespace) -> str:
     return f"{args.op}-{args.model}" if args.op == "verifyPair" else args.op
 
 
-def cmd_most(args: argparse.Namespace, runner: Runner) -> None:
-    mit = args.mit
+def cmd_most(args: argparse.Namespace, runner: Runner) -> dict:
+    mit, mst = args.mit, None
     if args.only in (None, "mit"):
         lo, hi = args.bracket or (None, None)
         mit, _ = runner.search("mit", lo, hi, start=1.0, down=0.5, up=2.0)
@@ -483,10 +508,170 @@ def cmd_most(args: argparse.Namespace, runner: Runner) -> None:
         if not args.no_confirm:
             mst = runner.confirm("mst", mst)
         print(f"MST = {mst}/s · ráfaga = {mit / mst:.3f}", flush=True)
+    return {"mit": mit, "mst": mst}
 
 
-def cmd_drift(args: argparse.Namespace, runner: Runner) -> None:
-    runner.run("drift", args.rate, window=args.window, slices=args.slices)
+def cmd_drift(args: argparse.Namespace, runner: Runner) -> dict:
+    passed = runner.run("drift", args.rate, window=args.window, slices=args.slices)
+    return {"pass": passed, "verdict": runner.last["verdict"]}
+
+
+def execute(args: argparse.Namespace) -> dict:
+    """Un paso completo: precondiciones, banco arriba, corridas, banco abajo."""
+    preconditions(args.skip_preconditions)
+    service = Service(args.target, args.workers, args.threads, args.concurrency)
+    try:
+        print(f"{now()} · {profile_name(args)} · {service.tag} · arrancando", flush=True)
+        service.up()
+        runner = Runner(args, service)
+        return (cmd_most if args.cmd == "most" else cmd_drift)(args, runner)
+    finally:
+        if not args.keep:
+            service.down()
+
+
+# ------------------------------------------------------------ cadena nocturna
+
+# La criba de la exploración: (workers, hilos de torch, concurrencia), con
+# workers × hilos × concurrencia ≤ 8, los vCPU de fr.
+CRIBA = [(1, 8, 1), (1, 4, 2), (1, 2, 4), (1, 1, 8), (2, 1, 1), (4, 1, 1), (8, 1, 1)]
+CRIBA_BRACKET = (5.0, 25.0)
+DRIFT_FRACTION = 0.9
+
+
+class Chain:
+    """criba → MST de las dos mejores → deriva → MoST de verifyPair xs.
+
+    Un solo proceso, sin depender de nadie. Lo que va haciendo, y por qué se
+    para si se para, queda en `results/chain-status.json`.
+    """
+
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.path = Path(args.results).resolve() / "chain-status.json"
+        self.status = {
+            "state": "running",
+            "started": now(),
+            "stage": None,
+            "reason": None,
+            "criba": {},
+            "mst": {},
+            "chosen": None,
+            "drift": None,
+            "campaign": None,
+        }
+
+    def save(self, **changes: object) -> None:
+        self.status.update(changes, updated=now())
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.status, indent=1, ensure_ascii=False))
+        tmp.replace(self.path)
+
+    def step(self, cmd: str, serie: str, cfg: tuple[int, int, int], **extra: object) -> dict:
+        w, t, c = cfg
+        args = argparse.Namespace(
+            cmd=cmd,
+            serie=serie,
+            target="fr",
+            op="verifyPair",
+            model="xs",
+            workers=w,
+            threads=t,
+            concurrency=c,
+            results=self.args.results,
+            skip_preconditions=False,
+            keep=False,
+            only=None,
+            mit=None,
+            bracket=None,
+            no_confirm=False,
+        )
+        for key, val in extra.items():
+            setattr(args, key, val)
+        return execute(args)
+
+    def run(self) -> None:
+        tag = "w{}t{}c{}".format
+        self.save(stage="criba")
+        for cfg in CRIBA:
+            try:
+                got = self.step(
+                    "most",
+                    "exploration",
+                    cfg,
+                    only="mit",
+                    bracket=list(CRIBA_BRACKET),
+                    no_confirm=True,
+                )
+                self.status["criba"][tag(*cfg)] = {"mit": got["mit"]}
+            except PreconditionFailed:
+                raise
+            except Abort as exc:
+                self.status["criba"][tag(*cfg)] = {"error": str(exc)}
+            self.save()
+        ranked = sorted(
+            (cfg for cfg in CRIBA if self.status["criba"][tag(*cfg)].get("mit")),
+            key=lambda cfg: -self.status["criba"][tag(*cfg)]["mit"],
+        )
+        if not ranked:
+            return self.save(state="stopped", reason="ninguna configuración superó la criba")
+
+        self.save(stage="mst")
+        for cfg in ranked[:2]:
+            mit = self.status["criba"][tag(*cfg)]["mit"]
+            try:
+                got = self.step("most", "exploration", cfg, only="mst", mit=mit, no_confirm=True)
+                self.status["mst"][tag(*cfg)] = {"mit": mit, "mst": got["mst"]}
+            except PreconditionFailed:
+                raise
+            except Abort as exc:
+                self.status["mst"][tag(*cfg)] = {"mit": mit, "error": str(exc)}
+            self.save()
+        done = [cfg for cfg in ranked[:2] if self.status["mst"][tag(*cfg)].get("mst")]
+        if not done:
+            return self.save(state="stopped", reason="ningún MST de las dos mejores")
+        # Mayor MST; a igualdad, mayor MIT.
+        best = max(
+            done,
+            key=lambda cfg: (
+                self.status["mst"][tag(*cfg)]["mst"],
+                self.status["mst"][tag(*cfg)]["mit"],
+            ),
+        )
+        chosen = {"config": tag(*best), **self.status["mst"][tag(*best)]}
+        self.save(stage="drift", chosen=chosen)
+
+        rate = rnd(DRIFT_FRACTION * chosen["mit"])
+        got = self.step("drift", "drift", best, rate=rate, window=900, slices=15)
+        self.save(drift={"rate": rate, **got})
+        if not got["pass"]:
+            v = got["verdict"]
+            return self.save(
+                state="stopped",
+                reason=(
+                    "la deriva no cumple las tres restricciones con tercios de 5 min: "
+                    f"{v['checks']}; mediana {v['med_first']}→{v['med_last']} ms (×{v['ratio']}). "
+                    "No se mide xs."
+                ),
+            )
+
+        self.save(stage="campaign")
+        got = self.step("most", "campaign", best)
+        self.save(state="finished", stage=None, campaign=got)
+
+
+def cmd_chain(args: argparse.Namespace) -> None:
+    chain = Chain(args)
+    try:
+        preconditions(False)
+        chain.run()
+    except Abort as exc:
+        chain.save(state="stopped", reason=str(exc))
+        raise
+    except BaseException as exc:
+        chain.save(state="failed", reason=f"{type(exc).__name__}: {exc}")
+        raise
+    print(f"{now()} · cadena: {chain.status['state']} · {chain.status['reason'] or ''}", flush=True)
 
 
 def main() -> None:
@@ -494,6 +679,8 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
+    chain = sub.add_parser("chain", help="la cadena nocturna, en un solo proceso")
+    chain.add_argument("--results", default=str(LOAD / "results"))
     for name in ("most", "drift"):
         p = sub.add_parser(name)
         p.add_argument("--serie", required=True)
@@ -520,17 +707,10 @@ def main() -> None:
             p.add_argument("--window", type=int, default=900)
             p.add_argument("--slices", type=int, default=15)
     args = parser.parse_args()
-
-    preconditions(args.skip_preconditions)
-    service = Service(args.target, args.workers, args.threads, args.concurrency)
-    try:
-        print(f"{now()} · {profile_name(args)} · {service.tag} · arrancando", flush=True)
-        service.up()
-        runner = Runner(args, service)
-        (cmd_most if args.cmd == "most" else cmd_drift)(args, runner)
-    finally:
-        if not args.keep:
-            service.down()
+    if args.cmd == "chain":
+        cmd_chain(args)
+    else:
+        execute(args)
 
 
 if __name__ == "__main__":
