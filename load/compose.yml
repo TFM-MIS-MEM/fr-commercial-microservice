@@ -1,0 +1,96 @@
+# ===========================================================
+# FR Commercial — Banco de medición de capacidad (MoST, TFM-MIS-MEM/docs#120)
+#
+# Lo arranca y lo para `load/most.py`; no está pensado para levantarse a mano.
+# Se mide el SERVICIO, sin la pasarela: k6 escribe las tres cabeceras de
+# identidad que pondría Kong y habla con `fr` directamente (load/README.md).
+#
+# AISLAMIENTO POR CPUSET, LÓGICO Y NO FÍSICO. Los cpusets son vCPU de la VM de
+# Docker Desktop, y macOS reparte esos vCPU entre los núcleos P y E del Mac como
+# le parece: k6 y `fr` no comparten vCPU, pero sí núcleos físicos. Medido en
+# load/README.md. `fr` va en 2–9 porque 0–1 cargan con el fondo de la VM.
+#
+# Red `internal`, propia: este servicio confía en las cabeceras de identidad sin
+# verificar credencial alguna, así que no se cuelga de `tfm-network`, donde
+# además el compose de desarrollo usa los mismos nombres. Ningún puerto
+# publicado.
+# ===========================================================
+
+name: fr-load
+
+services:
+  mongo:
+    # Solo para arrancar: `fr` hace `ping` y crea sus índices o no arranca. Las
+    # operaciones medidas hoy no la tocan. Sin volumen: nada se conserva.
+    image: mongo:7.0@sha256:b6421fd6d1c5ded6377b397d8983e2f82e2100dc5123332dcfda2065a472be5b
+    cpuset: "0-1"
+    networks: [load]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  fr:
+    # La imagen de PRODUCCIÓN (Dockerfile), no la de desarrollo: sin --reload y
+    # con LOG_LEVEL=info.
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: fr-commercial:load
+    cpuset: "2-9"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/fr-load
+      LOG_LEVEL: info
+      # Los cuatro sin valor por omisión: los fija most.py en cada configuración,
+      # y el secreto lo genera en cada ejecución sin escribirlo en ningún sitio.
+      # `WEB_CONCURRENCY` es el `--workers` de uvicorn.
+      EMBEDDING_TOKEN_SECRET: ${EMBEDDING_TOKEN_SECRET:?lo genera most.py}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:?lo fija most.py}
+      TORCH_NUM_THREADS: ${TORCH_NUM_THREADS:?lo fija most.py}
+      INFERENCE_CONCURRENCY: ${INFERENCE_CONCURRENCY:?lo fija most.py}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks: [load]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  calib:
+    # El servicio sintético de capacidad conocida (load/calibration/server.py).
+    # La misma base que el Dockerfile, por resumen. En los núcleos de `fr`.
+    image: python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e
+    cpuset: "2-9"
+    command: ["python", "/calibration/server.py"]
+    volumes:
+      - ./calibration:/calibration:ro
+    networks: [load]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  k6:
+    image: grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34
+    cpuset: "0-1"
+    # Solo con `docker compose run`: no es un servicio que quede levantado.
+    profiles: [tools]
+    volumes:
+      - .:/load
+    networks: [load]
+
+networks:
+  load:
+    internal: true
