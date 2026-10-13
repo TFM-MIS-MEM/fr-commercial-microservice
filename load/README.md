@@ -69,10 +69,11 @@ se reservan de antemano: `maxVUs = max(10, ⌈3 s × tasa⌉)`.
    llegadas, la latencia media pasa de 3 s (ley de Little).
 3. **Latencia.** La **mediana** del último tercio no supera **1,5 veces** la
    del primero. Se usa la mediana y no el p95 porque, con carga sostenible, el
-   p95 por tercios oscila mucho más. El umbral se justifica con la deriva
-   medida en la configuración de la campaña (`results/drift/`): ruido frente a
-   cola que crece. Con una sobrecarga del 1 %, el ratio pasa de 3 incluso en
-   60 s.
+   p95 por tercios oscila mucho más. El umbral se justifica con la distribución
+   del cociente en todas las corridas a tasas iguales o inferiores al MST final
+   de cada perfil, pasen o no (`analyze.py`, «Umbral de latencia»): es el ruido
+   con carga sostenible. Una cola que crece da cocientes muy por encima; con una
+   sobrecarga del 1 %, el ratio pasa de 3 incluso en 60 s.
 
 **Antes de cada corrida**, drenaje (la CPU del servicio por debajo del 10 % en
 dos lecturas seguidas) y **60 s de descanso**. Cada corrida, también las de MIT,
@@ -115,7 +116,7 @@ uvicorn (uno muere y el supervisor lo sustituye) o si hay un OOM en su cgroup.
 |---|---|---|
 | Imagen | 480 × 640, `fixtures/` | Una sola, en el tramo de < 0,5 MP. El coste de MTCNN depende de los píxeles. |
 | Perfil 1:1 | `verifyPair`, con un par de la misma persona | Existe ya, sin esperar a F8. |
-| Workers × hilos × concurrencia | La de mayor MST en la exploración (`results/exploration/`) | Una para todos los perfiles: con una por perfil, σ compararía configuraciones y no modelos. |
+| Workers × hilos × concurrencia | **1 × 1 × 8** (`w1t1c8`): la de mayor MST en la exploración (`results/exploration/`) | Una para todos los perfiles: con una por perfil, σ compararía configuraciones y no modelos. |
 
 ## Uso
 
@@ -181,4 +182,9 @@ lado, `.meta.json` guarda:
   swap durante la corrida queda en `swap_growth_mb`; no la invalida, pero se ve.
 
 `analyze.py` no lee esos veredictos: vuelve a evaluar cada resumen con
-`criteria.py`, y avisa si no coinciden.
+`criteria.py`, y avisa si no coinciden. Además de MIT, MST y ráfaga, da por
+perfil σ_S y σ_I, el coste por petición (1000/MST), las bajadas de escalón de la
+confirmación, las inválidas y el crecimiento del swap; la descomposición
+aproximada de `verifyPair` en dos detecciones más el resto; la distribución del
+cociente de medianas que sostiene el umbral; y las corridas con cociente por
+debajo de 0,8.
