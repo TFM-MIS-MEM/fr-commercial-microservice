@@ -1,0 +1,90 @@
+{
+ "kind": "mst",
+ "rate": 9.31,
+ "window": 600,
+ "slices": 3,
+ "profile": "calibration",
+ "target": "calib",
+ "config": {
+  "workers": 1,
+  "threads": 1,
+  "concurrency": 1
+ },
+ "attempt": 1,
+ "valid": true,
+ "invalid_reason": null,
+ "verdict": {
+  "pass": true,
+  "checks": {
+   "success": true,
+   "pending": true,
+   "latency": true
+  },
+  "rate": 9.31,
+  "window": 600,
+  "requests": 5586,
+  "success": 1,
+  "dropped": 0,
+  "inflight_max": 2,
+  "max_vus": 28,
+  "med_first": 105.49406200000001,
+  "med_last": 105.342458,
+  "ratio": 0.9985629143752184
+ },
+ "started": "2026-10-09T21:24:53+00:00",
+ "finished": "2026-10-09T21:35:23+00:00",
+ "commit": "b6fff3d8a0c527eb98cbcf982c0320b75aa1a21a",
+ "worktree_dirty": false,
+ "images": [
+  "python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e",
+  "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34",
+  "mongo:7.0@sha256:b6421fd6d1c5ded6377b397d8983e2f82e2100dc5123332dcfda2065a472be5b",
+  "fr-commercial:load"
+ ],
+ "cpuset": {
+  "fr": "2-9",
+  "calib": "2-9",
+  "k6": "0-1",
+  "mongo": "0-1"
+ },
+ "host_before": {
+  "at": "2026-10-09T21:23:50+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "23:23  up 7 days, 11:09, 1 user, load averages: 1.77 1.68 1.58",
+  "swap_used_mb": 2288.44,
+  "other_containers": [],
+  "problems": [],
+  "skipped": false
+ },
+ "host_after": {
+  "at": "2026-10-09T21:35:23+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "23:35  up 7 days, 11:20, 1 user, load averages: 1.61 1.69 1.59",
+  "swap_used_mb": 2288.44,
+  "other_containers": []
+ },
+ "swap_growth_mb": 0.0,
+ "service_before": {
+  "container": "45967935278e",
+  "image": "sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e",
+  "started_at": "2026-10-09T19:35:33.620603334Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false
+ },
+ "service_after": {
+  "container": "45967935278e",
+  "image": "sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e",
+  "started_at": "2026-10-09T19:35:33.620603334Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false
+ },
+ "k6_stdout": "rate=9.31 reqs=5586 med=105ms"
+}

@@ -1,0 +1,27 @@
+2026-10-09T19:35:33+00:00 · calibration · calib · arrancando
+001-mit-1.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/10 · mediana 106→106 ms (×1.01) · swap -16 MB
+002-mit-2.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/10 · mediana 105→104 ms (×0.99)
+003-mit-4.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/12 · mediana 105→106 ms (×1.01) · swap -10 MB
+004-mit-8.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/24 · mediana 105→105 ms (×1.00) · swap -40 MB
+005-mit-16.00: no pasa · éxito 1.000 · descartadas 334 · en vuelo 48/48 · mediana 4862→4938 ms (×1.02)
+006-mit-12.00: no pasa · éxito 1.000 · descartadas 118 · en vuelo 36/36 · mediana 2594→3759 ms (×1.45)
+007-mit-10.00: no pasa · éxito 1.000 · descartadas 1 · en vuelo 30/30 · mediana 743→2724 ms (×3.66) · swap -8 MB
+008-mit-9.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/27 · mediana 106→105 ms (×1.00)
+009-mit-9.50: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/29 · mediana 110→112 ms (×1.01) · swap -8 MB
+010-mit-9.75: no pasa · éxito 1.000 · descartadas 0 · en vuelo 16/30 · mediana 401→1332 ms (×3.32)
+011-mit-9.50: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/29 · mediana 108→110 ms (×1.02)
+012-mit-9.50: no pasa · éxito 1.000 · descartadas 0 · en vuelo 3/29 · mediana 107→162 ms (×1.51)
+013-mit-9.03: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/28 · mediana 105→105 ms (×1.00)
+014-mit-9.03: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/28 · mediana 105→105 ms (×1.00)
+015-mit-9.03: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/28 · mediana 105→105 ms (×1.00)
+MIT = 9.03/s
+016-mst-7.22: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/22 · mediana 108→108 ms (×1.00) · swap -8 MB
+017-mst-9.03: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/28 · mediana 105→105 ms (×1.00)
+018-mst-11.29: no pasa · éxito 1.000 · descartadas 1071 · en vuelo 34/34 · mediana 3529→3543 ms (×1.00)
+019-mst-10.16: no pasa · éxito 1.000 · descartadas 395 · en vuelo 31/31 · mediana 3195→3209 ms (×1.00)
+020-mst-9.59: no pasa · éxito 1.000 · descartadas 48 · en vuelo 29/29 · mediana 1246→2995 ms (×2.40)
+021-mst-9.31: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/28 · mediana 106→106 ms (×1.00)
+022-mst-9.31: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/28 · mediana 105→105 ms (×1.00)
+023-mst-9.31: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/28 · mediana 106→106 ms (×1.00)
+MST = 9.31/s · ráfaga = 0.970
+exit=0

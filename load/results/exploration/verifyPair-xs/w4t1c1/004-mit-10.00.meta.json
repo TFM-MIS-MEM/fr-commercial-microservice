@@ -1,0 +1,172 @@
+{
+ "kind": "mit",
+ "rate": 10.0,
+ "window": 60,
+ "slices": 3,
+ "profile": "verifyPair-xs",
+ "target": "fr",
+ "config": {
+  "workers": 4,
+  "threads": 1,
+  "concurrency": 1
+ },
+ "attempt": 1,
+ "valid": true,
+ "invalid_reason": null,
+ "verdict": {
+  "pass": true,
+  "checks": {
+   "success": true,
+   "pending": true,
+   "latency": true
+  },
+  "rate": 10,
+  "window": 60,
+  "requests": 600,
+  "success": 1,
+  "dropped": 0,
+  "inflight_max": 3,
+  "max_vus": 30,
+  "med_first": 90.0263545,
+  "med_last": 90.3550215,
+  "ratio": 1.0036507865038566
+ },
+ "started": "2026-10-10T02:43:07+00:00",
+ "finished": "2026-10-10T02:44:37+00:00",
+ "commit": "b6fff3d8a0c527eb98cbcf982c0320b75aa1a21a",
+ "worktree_dirty": false,
+ "images": [
+  "python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e",
+  "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34",
+  "mongo:7.0@sha256:b6421fd6d1c5ded6377b397d8983e2f82e2100dc5123332dcfda2065a472be5b",
+  "fr-commercial:load"
+ ],
+ "cpuset": {
+  "fr": "2-9",
+  "calib": "2-9",
+  "k6": "0-1",
+  "mongo": "0-1"
+ },
+ "host_before": {
+  "at": "2026-10-10T02:41:56+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "4:41  up 7 days, 16:27, 1 user, load averages: 6.04 4.50 4.03",
+  "swap_used_mb": 2232.44,
+  "other_containers": [],
+  "problems": [],
+  "skipped": false
+ },
+ "host_after": {
+  "at": "2026-10-10T02:44:37+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "4:44  up 7 days, 16:30, 1 user, load averages: 3.30 3.82 3.82",
+  "swap_used_mb": 2232.44,
+  "other_containers": []
+ },
+ "swap_growth_mb": 0.0,
+ "service_before": {
+  "container": "85e54a938ba7",
+  "image": "sha256:445252200bc225032f3e3baade0b709a3513e57180395b0096493cc516467110",
+  "started_at": "2026-10-10T02:33:49.25221822Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false,
+  "processes": [
+   [
+    1,
+    0,
+    "/usr/local/bin/python3.11 /usr/local/bin/uvicorn --factory src.main:create_app --host 0.0.0.0 --port 8000"
+   ],
+   [
+    7,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.resource_tracker import main;main(6)"
+   ],
+   [
+    8,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=9) --multiprocessing-fork"
+   ],
+   [
+    9,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=13) --multiprocessing-fork"
+   ],
+   [
+    10,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=17) --multiprocessing-fork"
+   ],
+   [
+    11,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=21) --multiprocessing-fork"
+   ]
+  ],
+  "workers": [
+   8,
+   9,
+   10,
+   11
+  ],
+  "oom_kill": 0,
+  "memory_peak_bytes": 2187251712,
+  "memory_current_bytes": 2063388672
+ },
+ "service_after": {
+  "container": "85e54a938ba7",
+  "image": "sha256:445252200bc225032f3e3baade0b709a3513e57180395b0096493cc516467110",
+  "started_at": "2026-10-10T02:33:49.25221822Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false,
+  "processes": [
+   [
+    1,
+    0,
+    "/usr/local/bin/python3.11 /usr/local/bin/uvicorn --factory src.main:create_app --host 0.0.0.0 --port 8000"
+   ],
+   [
+    7,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.resource_tracker import main;main(6)"
+   ],
+   [
+    8,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=9) --multiprocessing-fork"
+   ],
+   [
+    9,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=13) --multiprocessing-fork"
+   ],
+   [
+    10,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=17) --multiprocessing-fork"
+   ],
+   [
+    11,
+    1,
+    "/usr/local/bin/python3.11 -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=21) --multiprocessing-fork"
+   ]
+  ],
+  "workers": [
+   8,
+   9,
+   10,
+   11
+  ],
+  "oom_kill": 0,
+  "memory_peak_bytes": 2187251712,
+  "memory_current_bytes": 2049794048
+ },
+ "k6_stdout": "rate=10 reqs=600 med=90ms"
+}

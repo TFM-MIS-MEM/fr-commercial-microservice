@@ -1,0 +1,117 @@
+{
+ "kind": "mst",
+ "rate": 17.5,
+ "window": 600,
+ "slices": 3,
+ "profile": "verifyPair-xs",
+ "target": "fr",
+ "config": {
+  "workers": 1,
+  "threads": 1,
+  "concurrency": 8
+ },
+ "attempt": 1,
+ "valid": true,
+ "invalid_reason": null,
+ "verdict": {
+  "pass": false,
+  "checks": {
+   "success": true,
+   "pending": false,
+   "latency": false
+  },
+  "rate": 17.5,
+  "window": 600,
+  "requests": 8302,
+  "success": 1,
+  "dropped": 2199,
+  "inflight_max": 53,
+  "max_vus": 53,
+  "med_first": 222.31964599999998,
+  "med_last": 4002.2665025,
+  "ratio": 18.002306923878425
+ },
+ "started": "2026-10-10T03:26:38+00:00",
+ "finished": "2026-10-10T03:37:11+00:00",
+ "commit": "b6fff3d8a0c527eb98cbcf982c0320b75aa1a21a",
+ "worktree_dirty": false,
+ "images": [
+  "python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e",
+  "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34",
+  "mongo:7.0@sha256:b6421fd6d1c5ded6377b397d8983e2f82e2100dc5123332dcfda2065a472be5b",
+  "fr-commercial:load"
+ ],
+ "cpuset": {
+  "fr": "2-9",
+  "calib": "2-9",
+  "k6": "0-1",
+  "mongo": "0-1"
+ },
+ "host_before": {
+  "at": "2026-10-10T03:25:20+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "5:25  up 7 days, 17:10, 1 user, load averages: 5.22 5.23 4.70",
+  "swap_used_mb": 2232.44,
+  "other_containers": [],
+  "problems": [],
+  "skipped": false
+ },
+ "host_after": {
+  "at": "2026-10-10T03:37:12+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "5:37  up 7 days, 17:22, 1 user, load averages: 5.85 6.15 5.49",
+  "swap_used_mb": 2232.44,
+  "other_containers": []
+ },
+ "swap_growth_mb": 0.0,
+ "service_before": {
+  "container": "dd16a179b818",
+  "image": "sha256:7d4b0c0a5d6f8cee3da42ffa9cd57d72c57c18454c92a811ac78bc661509390e",
+  "started_at": "2026-10-10T03:13:43.698440342Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false,
+  "processes": [
+   [
+    1,
+    0,
+    "/usr/local/bin/python3.11 /usr/local/bin/uvicorn --factory src.main:create_app --host 0.0.0.0 --port 8000"
+   ]
+  ],
+  "workers": [],
+  "oom_kill": 0,
+  "memory_peak_bytes": 627220480,
+  "memory_current_bytes": 572481536
+ },
+ "service_after": {
+  "container": "dd16a179b818",
+  "image": "sha256:7d4b0c0a5d6f8cee3da42ffa9cd57d72c57c18454c92a811ac78bc661509390e",
+  "started_at": "2026-10-10T03:13:43.698440342Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false,
+  "processes": [
+   [
+    1,
+    0,
+    "/usr/local/bin/python3.11 /usr/local/bin/uvicorn --factory src.main:create_app --host 0.0.0.0 --port 8000"
+   ],
+   [
+    4161,
+    0,
+    "python -c import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"
+   ]
+  ],
+  "workers": [],
+  "oom_kill": 0,
+  "memory_peak_bytes": 764432384,
+  "memory_current_bytes": 733429760
+ },
+ "k6_stdout": "rate=17.5 reqs=8302 med=3992ms"
+}
