@@ -1,0 +1,68 @@
+{
+ "state": "stopped",
+ "started": "2026-10-10T00:51:43+00:00",
+ "stage": "drift",
+ "reason": "la deriva no cumple las tres restricciones con tercios de 5 min: {'success': True, 'pending': False, 'latency': False}; mediana 222.804542→3476.5229395 ms (×15.60346529874602). No se mide xs.",
+ "criba": {
+  "w1t8c1": {
+   "mit": 9.69
+  },
+  "w1t4c2": {
+   "mit": 10.31
+  },
+  "w1t2c4": {
+   "mit": 13.12
+  },
+  "w1t1c8": {
+   "mit": 17.5
+  },
+  "w2t1c1": {
+   "mit": 11.88
+  },
+  "w4t1c1": {
+   "mit": 13.75
+  },
+  "w8t1c1": {
+   "mit": 10.62
+  }
+ },
+ "mst": {
+  "w1t1c8": {
+   "mit": 17.5,
+   "mst": 14.0
+  },
+  "w4t1c1": {
+   "mit": 13.75,
+   "mst": 10.45
+  }
+ },
+ "chosen": {
+  "config": "w1t1c8",
+  "mit": 17.5,
+  "mst": 14.0
+ },
+ "drift": {
+  "rate": 15.75,
+  "pass": false,
+  "verdict": {
+   "pass": false,
+   "checks": {
+    "success": true,
+    "pending": false,
+    "latency": false
+   },
+   "rate": 15.75,
+   "window": 900,
+   "requests": 12584,
+   "success": 1,
+   "dropped": 1592,
+   "inflight_max": 48,
+   "max_vus": 48,
+   "med_first": 222.804542,
+   "med_last": 3476.5229395,
+   "ratio": 15.60346529874602
+  }
+ },
+ "campaign": null,
+ "updated": "2026-10-10T05:27:04+00:00"
+}
