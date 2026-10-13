@@ -69,7 +69,17 @@ MULTIPART = (
     "multipart: el cierre del cuerpo lo prueban peticiones con una parte de más "
     "(test_inference.py); la comparación no traduce `contentMediaType`"
 )
+#: Decidido en #35: los cuerpos JSON de F3 tampoco se comparan. Las cotas del
+#: cuerpo (`maxLength`, `required`, el cierre, el `null`) las vigilan pruebas de
+#: comportamiento en los dos lados de cada una, en `test_create_gallery.py` y
+#: `test_update_gallery.py`.
+JSON_BODY = (
+    "modo entrega: no se amplía el instrumento; las cotas del cuerpo las vigilan "
+    "pruebas de comportamiento en los dos lados"
+)
 WITHOUT_BODY = {
+    ("post", "/v1/fr/commercial/galleries"): JSON_BODY,
+    ("patch", "/v1/fr/commercial/galleries/{galleryId}"): JSON_BODY,
     ("post", "/v1/fr/commercial/detection"): MULTIPART,
     ("post", "/v1/fr/commercial/verification"): MULTIPART,
     ("post", "/v1/fr/commercial/extract-embeddings"): MULTIPART,
@@ -166,7 +176,9 @@ def test_the_normalizer_refuses_the_closed_composite():
         compare_operation(app.openapi(), "get", WEBHOOK)
 
 
-def test_the_comparison_refuses_request_bodies_until_F3():
+def test_the_comparison_refuses_request_bodies():
+    # El «hasta F3» de la sesión 9 quedó sin efecto en #35: la comparación sigue
+    # sin comparar cuerpos, y sigue negándose a darlos por buenos.
     app = FastAPI()
 
     @app.post(LIST)
