@@ -46,7 +46,11 @@ BASE_URL = "http://localhost:8000"
 #: y la comparación estática: una operación nueva obliga a tocar esta línea, y
 #: con ello entra sola en las dos pruebas.
 IMPLEMENTED = {
+    ("post", "/v1/fr/commercial/galleries"),
+    ("get", "/v1/fr/commercial/galleries"),
     ("get", "/v1/fr/commercial/galleries/{galleryId}"),
+    ("patch", "/v1/fr/commercial/galleries/{galleryId}"),
+    ("delete", "/v1/fr/commercial/galleries/{galleryId}"),
     ("post", "/v1/fr/commercial/detection"),
     ("post", "/v1/fr/commercial/verification"),
     ("post", "/v1/fr/commercial/extract-embeddings"),

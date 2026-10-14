@@ -9,7 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    """Ahora, en UTC y TRUNCADO A MILISEGUNDOS, que es lo que guarda MongoDB.
+
+    Sin truncar, la respuesta de una creación ---que se construye con el
+    documento en memoria--- llevaría microsegundos, y la lectura posterior del
+    mismo recurso no: dos `createdAt` distintos para el mismo instante (#35).
+    """
+    now = datetime.now(timezone.utc)
+    return now.replace(microsecond=now.microsecond // 1000 * 1000)
 
 
 class Document(BaseModel):

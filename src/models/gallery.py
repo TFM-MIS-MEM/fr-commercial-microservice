@@ -31,7 +31,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 from pydantic.json_schema import SkipJsonSchema
 
 if TYPE_CHECKING:
@@ -103,3 +103,54 @@ class Gallery(BaseModel):
             createdAt=stored.createdAt,
             updatedAt=stored.updatedAt,
         )
+
+
+# ------------------------------------------------------------------ entrada
+#
+# `null` NO es «ausente». Ningún campo de estos cuerpos declara `nullable`, así
+# que `"name": null` es un `400`. Por eso el tipo es `str` con valor por omisión
+# `None`, y no `str | None`: Pydantic no valida el valor por omisión, de modo que
+# un campo AUSENTE toma `None` sin error, y un `null` EXPLÍCITO falla como cadena.
+# Lo que se envió se lee de `model_fields_set`, nunca comparando con `None`.
+#
+# `name` admite `""`: el contrato no declara `minLength` (decidido en F3, #35;
+# la propuesta de cambio de contrato es un issue aparte con `alcance:futuro`).
+
+
+class GalleryCreate(BaseModel):
+    """Cuerpo de `createGallery`. Sin `status`: lo determina el sistema."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=120)
+    description: str = Field(None, max_length=500)
+    model: ModelName = None
+
+
+class GalleryUpdate(BaseModel):
+    """Cuerpo de `updateGallery`. Sin `model` ni `status`: el cierre los rechaza."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(None, max_length=120)
+    description: str = Field(None, max_length=500)
+
+
+# ------------------------------------------------------------------ listado
+
+
+class GalleryPage(BaseModel):
+    """`200` de `listGalleries`.
+
+    El esquema en línea del contrato no declara `required`, así que los cuatro
+    campos se publican opcionales; el servicio los envía SIEMPRE. Ninguno admite
+    `null`: `SkipJsonSchema` quita esa rama del esquema publicado, igual que en
+    `Gallery`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[Gallery] | SkipJsonSchema[None] = None
+    page: int | SkipJsonSchema[None] = None
+    pageSize: int | SkipJsonSchema[None] = None  # noqa: N815
+    total: int | SkipJsonSchema[None] = None

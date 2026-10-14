@@ -22,6 +22,7 @@ otra fase, y el formato binario de `embedding` es de F6.
 """
 
 from pymongo import IndexModel
+from pymongo.errors import DuplicateKeyError
 
 from src.documents import face, gallery, identity
 
@@ -35,8 +36,27 @@ INDEXES: dict[str, list[IndexModel]] = {
 #: CÓMO LO USAN F3 Y F4. Se escribe sin comprobar antes: la consulta previa
 #: tiene una carrera entre la lectura y la escritura, y el índice es la única
 #: garantía. El `DuplicateKeyError` se traduce a `409` según EL ÍNDICE QUE
-#: SALTÓ ---`details["keyPattern"]`, o el nombre en el mensaje---, no solo por
-#: el código 11000: una colección con dos índices únicos tendría dos `409`
+#: SALTÓ ---`details["keyPattern"]`, con `conflict_code`---, no solo por el
+#: código 11000: una colección con dos índices únicos tendría dos `409`
 #: distintos, y un 11000 de un índice no previsto no es un `409` declarado.
-#: Medido en #34: el error de inserción lleva `keyPattern` y `keyValue`.
+#: Medido en #34: el error de inserción lleva `keyPattern` y `keyValue`; en #35,
+#: que el de `find_one_and_update` también, pero sin `index`.
 CONFLICTS: dict[str, str] = {**gallery.CONFLICTS, **identity.CONFLICTS}
+
+
+def conflict_code(exc: DuplicateKeyError) -> str | None:
+    """Código de dominio del índice único que saltó; `None` si no es uno previsto.
+
+    El nombre del índice se DERIVA de `keyPattern` ---el nombre por omisión de
+    MongoDB es `campo_1_campo_1`, el mismo que usan las claves de `CONFLICTS`---
+    y no se lee de `details["index"]`, porque esa clave no existe en todos los
+    caminos de escritura. Medido en #35 contra mongod 7.0: el error de
+    `insert_one` lleva `index` y `keyPattern`; el de `find_one_and_update`
+    (`findAndModify`) lleva `keyPattern` y NO `index`.
+
+    Quien recibe `None` relanza: un 11000 de un índice que no figura en
+    `CONFLICTS` no es un `409` declarado, y sale como `500`.
+    """
+    pattern = (exc.details or {}).get("keyPattern") or {}
+    name = "_".join(f"{field}_{direction}" for field, direction in pattern.items())
+    return CONFLICTS.get(name)
