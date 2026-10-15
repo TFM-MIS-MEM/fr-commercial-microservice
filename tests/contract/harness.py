@@ -54,6 +54,13 @@ IMPLEMENTED = {
     ("post", "/v1/fr/commercial/detection"),
     ("post", "/v1/fr/commercial/verification"),
     ("post", "/v1/fr/commercial/extract-embeddings"),
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/identities"),
+    ("get", "/v1/fr/commercial/galleries/{galleryId}/identities"),
+    ("get", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}"),
+    ("patch", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}"),
+    ("delete", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}"),
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces"),
+    ("delete", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces/{faceId}"),
 }
 
 

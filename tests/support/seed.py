@@ -25,11 +25,20 @@ def seed_gallery(db, account_id: str, **overrides) -> str:
     return str(db.galleries.insert_one(doc).inserted_id)
 
 
-def seed_identity_with_faces(db, gallery_id: str, faces: int = 2) -> str:
-    """Una identidad de la galería con `faces` rostros, como los dejaría F4."""
+def seed_identity_with_faces(db, gallery_id: str, faces: int = 2, **overrides) -> str:
+    """Una identidad de la galería con `faces` rostros, como los dejaría F4.
+
+    `overrides` va al documento de la identidad (`externalId`, `fullName`…).
+    """
     gallery = ObjectId(gallery_id)
     identity = db.identities.insert_one(
-        {"galleryId": gallery, "fullName": "Ana", "faceCount": faces, "createdAt": CREATED}
+        {
+            "galleryId": gallery,
+            "fullName": "Ana",
+            "faceCount": faces,
+            "createdAt": CREATED,
+            **overrides,
+        }
     ).inserted_id
     for _ in range(faces):
         db.faces.insert_one(
