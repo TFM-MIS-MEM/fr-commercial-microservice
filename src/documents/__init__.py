@@ -17,8 +17,8 @@ el código de dominio de su `409` en `CONFLICTS`. `ensure_indexes`
 (`src/core/database.py`) los crea al arrancar; `tests/contract/
 test_uniqueness.py` cruza los únicos con los `409` del contrato.
 
-QUÉ NO HAY AQUÍ: mantener los contadores es de F3 y F4, la reconciliación es
-otra fase, y el formato binario de `embedding` es de F6.
+QUÉ NO HAY AQUÍ: mantener los contadores es de los controladores (F4,
+`src/controllers/identities.py`) y la reconciliación es otra fase.
 """
 
 from pymongo import IndexModel

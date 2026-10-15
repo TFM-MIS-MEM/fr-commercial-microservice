@@ -7,6 +7,17 @@ from typing import Any, ClassVar
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field
 
+#: MARCA DE BORRADO de una cascada en curso, en `galleries` y en `identities`.
+#: Es un campo interno: los modelos de persistencia lo ignoran al leer y no está
+#: en ningún modelo de la API. La ponen `deleteGallery` y `deleteIdentity` antes
+#: de borrar nada, y las altas de F4 filtran por `LIVE` en su `$inc`: así una
+#: alta que se cruza con la cascada o queda dentro de lo que ésta borra o se
+#: deshace. El razonamiento completo, en `src/controllers/galleries.delete_gallery`.
+DELETING = "deletingAt"
+
+#: Lo que no está marcado para borrarse.
+LIVE = {DELETING: {"$exists": False}}
+
 
 def utc_now() -> datetime:
     """Ahora, en UTC y TRUNCADO A MILISEGUNDOS, que es lo que guarda MongoDB.

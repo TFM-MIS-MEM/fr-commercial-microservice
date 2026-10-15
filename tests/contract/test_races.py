@@ -17,9 +17,12 @@ LAS VENTANAS QUE SE FUERZAN, y lo que cierra cada una:
      en su `$inc` sobre la galería y la compensación. Sin marca, sin filtro o
      sin compensación quedan datos biométricos de una galería borrada.
   2. `addFace` contra `deleteIdentity`: lo mismo con la marca de la identidad.
-  3. Dos `deleteFace` sobre una identidad de dos rostros: el segundo corre
-     entero mientras el primero está entre su decremento y su borrado. Con una
-     lectura previa en lugar del decremento condicional, borrarían los dos.
+  3. Dos `deleteFace` sobre una identidad de dos rostros: el primero ha leído
+     su rostro y se detiene JUSTO ANTES de escribir en la identidad; el segundo
+     corre entero. Con una lectura previa del contador en lugar del decremento
+     condicional, el primero decidiría con un valor caducado y borrarían los
+     dos. Detenerlo después del decremento no discrimina: medido en la sesión
+     16, un mutante con lectura previa pasaba así en verde.
 
 Resultado esperado de 1 y 2: `404` del alta, `204` de la cascada, y nada de lo
 que el alta insertó en la base.
@@ -91,6 +94,10 @@ def interleave(client, first, first_pause, second, second_pause=None):
                 if second_pause is not None:
                     second_pause.release.set()
                 res_b = await b
+            # El arnés lee el cuerpo de la petición, y el cliente asíncrono deja
+            # el multipart en flujo, sin leer.
+            for res in (res_a, res_b):
+                await res.request.aread()
         return res_a, res_b
 
     res_a, res_b = client.portal.call(run)
@@ -203,17 +210,17 @@ def test_two_concurrent_deleteFace_leave_the_identity_with_one_face(client, db, 
     gallery = seed_gallery(db, ACCOUNT_A, identityCount=1, faceCount=2)
     identity = seed_identity_with_faces(db, gallery, faces=2)
     first, second = [str(f["_id"]) for f in faces_of(db, identity)]
-    deleting = Pause(monkeypatch, "faces", "delete_one")
+    discounting = Pause(monkeypatch, "identities", "update_one")
 
     res_first, res_second = interleave(
         client,
         delete(FACE.format(gallery, identity, first)),
-        deleting,
+        discounting,
         delete(FACE.format(gallery, identity, second)),
     )
 
-    assert res_first.status_code == 204, res_first.text
-    assert res_second.status_code == 409, res_second.text
-    assert res_second.json()["code"] == "LAST_FACE_OF_IDENTITY"
-    assert [str(f["_id"]) for f in faces_of(db, identity)] == [second]
+    assert res_second.status_code == 204, res_second.text
+    assert res_first.status_code == 409, res_first.text
+    assert res_first.json()["code"] == "LAST_FACE_OF_IDENTITY"
+    assert [str(f["_id"]) for f in faces_of(db, identity)] == [first]
     assert identity_doc(db, identity)["faceCount"] == 1

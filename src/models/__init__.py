@@ -9,11 +9,12 @@ un campo de más tiene que dar el `400` que declaran todas las operaciones con
 cuerpo.
 
 LO QUE ESTÁ PROBADO Y LO QUE ES OBLIGACIÓN. El `400` por campo de más está
-probado en cuerpos JSON (`tests/contract/test_rejections.py`) y, desde F5 (#37),
-en los tres cuerpos `multipart/form-data` de la inferencia sin estado
-(`tests/contract/test_inference.py`). En los otros cinco es una obligación del
-contrato, que vigila `tests/contract/test_closure.py` y que cumple quien
-implemente F4, F8 y F12.
+probado en cuerpos JSON (`tests/contract/test_rejections.py`), desde F5 (#37) en
+los tres cuerpos `multipart/form-data` de la inferencia sin estado
+(`tests/contract/test_inference.py`) y desde F4 (#36) en los de `createIdentity`
+y `addFace` (`test_create_identity.py`, `test_add_face.py`). En los otros tres
+es una obligación del contrato, que vigila `tests/contract/test_closure.py` y
+que cumple quien implemente F8 y F12.
 Medido en #103 con FastAPI 0.141.1 y Starlette 1.7.0:
 
   - Parámetros `Form()` y `File()` sueltos: una parte de más, de texto o de
