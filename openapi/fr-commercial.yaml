@@ -816,9 +816,10 @@ paths:
         **Comparación.** De la imagen se toma el rostro de mayor confianza y se
         extrae su vector con el modelo **de la galería**. Su código LSSC se
         compara por distancia de Hamming con **todos** los rostros de la
-        galería, y gana el más cercano; a igual distancia, el rostro enrolado
-        antes. Hay coincidencia si `1 − d/1536 ≥ threshold`, con el umbral del
-        modelo de la galería si no se indica (los valores, en `verifyPair`).
+        galería, y gana el más cercano; a igual distancia, el de menor
+        identificador, para que el resultado sea determinista. Hay coincidencia
+        si `1 − d/1536 ≥ threshold`, con el umbral del modelo de la galería si
+        no se indica (los valores, en `verifyPair`).
 
         **`confidence` solo sale con coincidencia**, y es la del rostro
         ganador. Sin coincidencia no se emite: sin identidad, no hay de quién

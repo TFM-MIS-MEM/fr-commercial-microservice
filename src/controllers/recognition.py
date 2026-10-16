@@ -184,10 +184,12 @@ async def search_gallery(
     de unidades es precisamente esta recuperación, y es lo que mide el perfil
     1:N.
 
-    EMPATES: gana el rostro de menor `_id`, el enrolado antes, para que el
-    resultado sea determinista. Sin `sort` en MongoDB, que sería ordenar en
-    memoria todos los rostros de la galería: entre los de distancia mínima, que
-    casi siempre es uno.
+    EMPATES: a igual distancia, el de menor identificador (`_id` del rostro),
+    para que el resultado sea determinista. No es «el enrolado antes»: un
+    `ObjectId` solo sigue el orden de alta dentro de un mismo proceso, y con
+    varios workers en el mismo segundo no. Sin `sort` en MongoDB, que sería
+    ordenar en memoria todos los rostros de la galería: el desempate se hace
+    entre los de distancia mínima, que casi siempre es uno.
 
     SIN COINCIDENCIA, `identity` es `null` y `confidence` no se emite: sin
     identidad, no hay de quién sea esa confianza.
