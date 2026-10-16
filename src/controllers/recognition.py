@@ -59,6 +59,7 @@ from time import perf_counter
 import numpy as np
 import torch
 from bson import ObjectId
+from bson.raw_bson import RawBSONDocument
 from pymongo.asynchronous.database import AsyncDatabase
 
 from src.controllers.common import not_found, object_id
@@ -102,6 +103,37 @@ def _no_liveness(form: VerifyAgainstIdentityForm) -> None:
             "Liveness is not supported yet; send the request without livenessToken",
             {"parts": ["livenessToken"]},
         )
+
+
+#: El elemento BSON del código: tipo binario (0x05) y nombre; después, su
+#: longitud (int32, little-endian) y el subtipo genérico (0x00).
+_EMBEDDING = b"\x05embedding\x00"
+_CODE_HEADER = lssc.CODE_BYTES.to_bytes(4, "little") + b"\x00"
+
+
+def stored_code(face: RawBSONDocument) -> bytes:
+    """El código guardado de un rostro, cortado de su BSON sin decodificarlo.
+
+    POR QUÉ. Medido en F8 a 50.000 rostros: la recuperación tardaba 101 ms de
+    mediana frente a 22 ms de ejecución en MongoDB. El resto es decodificar en
+    Python, y la decodificación por omisión crea por documento un `dict`, sus
+    claves y dos `ObjectId`. Con un worker eso va en serie, y moverlo a un hilo
+    no lo reduce: no suelta el GIL. Lo que se reduce es el trabajo por
+    documento: pymongo parte el lote en `RawBSONDocument` sin decodificar sus
+    campos, y aquí se busca el elemento y se corta el código.
+
+    POR QUÉ EL PRIMER ACIERTO ES EL ELEMENTO. Con la proyección de
+    `search_gallery`, lo único que puede precederlo son `_id` e `identityId`:
+    dos `ObjectId` de 12 bytes, que no pueden contener el nombre y la cabecera
+    (16 bytes), y el nombre no puede empezar dentro de uno y terminar en el
+    elemento siguiente (`0x05` solo aparece al principio del patrón). Si algo
+    no casa ---otra longitud, otro subtipo---, se decodifica el documento.
+    """
+    raw = face.raw
+    at = raw.find(_EMBEDDING, 4) + len(_EMBEDDING)
+    if at >= len(_EMBEDDING) and raw[at : at + 5] == _CODE_HEADER:
+        return raw[at + 5 : at + 5 + lssc.CODE_BYTES]
+    return face["embedding"]
 
 
 def _threshold(requested: float | None, model: str) -> float:
@@ -182,7 +214,9 @@ async def search_gallery(
     proyectada a `embedding` e `identityId` (y el `_id`, para los empates),
     servida por el índice `{galleryId}`. Sin caché: `f(n_galería)` en la fórmula
     de unidades es precisamente esta recuperación, y es lo que mide el perfil
-    1:N.
+    1:N. Los documentos llegan como `RawBSONDocument` y el código se corta de
+    sus bytes (`stored_code`); `_id` e `identityId` solo se decodifican del
+    ganador y de los empatados con él.
 
     EMPATES: a igual distancia, el de menor identificador (`_id` del rostro),
     para que el resultado sea determinista. No es «el enrolado antes»: un
@@ -207,11 +241,13 @@ async def search_gallery(
     probe = await face_code(inference, image, model)
 
     started = perf_counter()
-    faces = db[FACES].find(
-        {"galleryId": gallery["_id"]}, projection={"embedding": 1, "identityId": 1}
+    collection = db[FACES]
+    raw = collection.with_options(
+        codec_options=collection.codec_options.with_options(document_class=RawBSONDocument)
     )
+    faces = raw.find({"galleryId": gallery["_id"]}, projection={"embedding": 1, "identityId": 1})
     stored = await faces.to_list()
-    codes = [face["embedding"] for face in stored]
+    codes = [stored_code(face) for face in stored]
     retrieved = perf_counter()
     if not codes:
         return SearchResult(identity=None)
