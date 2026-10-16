@@ -61,6 +61,8 @@ IMPLEMENTED = {
     ("delete", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}"),
     ("post", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces"),
     ("delete", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces/{faceId}"),
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/verify"),
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/search"),
 }
 
 

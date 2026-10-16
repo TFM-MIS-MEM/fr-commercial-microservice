@@ -79,3 +79,18 @@ def test_d_max_matches_and_one_more_does_not(model):
 
     assert lssc.confidence(lssc.D_MAX[model]) >= threshold
     assert lssc.confidence(lssc.D_MAX[model] + 1) < threshold
+
+
+def test_hamming_many_is_hamming_row_by_row():
+    # La búsqueda 1:N compara de una vez contra todos los códigos de la galería;
+    # tiene que dar lo mismo que el comparador de pares, fila a fila.
+    rng = np.random.default_rng(40)
+    probe = rng.integers(0, 256, lssc.CODE_BYTES, dtype=np.uint8).tobytes()
+    codes = [rng.integers(0, 256, lssc.CODE_BYTES, dtype=np.uint8).tobytes() for _ in range(50)]
+    codes += [probe, bytes(lssc.CODE_BYTES), b"\xff" * lssc.CODE_BYTES]
+
+    assert lssc.hamming_many(probe, codes).tolist() == [lssc.hamming(probe, c) for c in codes]
+
+
+def test_hamming_many_of_no_codes_is_empty():
+    assert lssc.hamming_many(bytes(lssc.CODE_BYTES), []).tolist() == []
