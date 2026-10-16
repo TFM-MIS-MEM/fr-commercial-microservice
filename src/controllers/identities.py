@@ -66,9 +66,13 @@ from src.documents.gallery import COLLECTION as GALLERIES
 from src.documents.identity import COLLECTION as IDENTITIES
 from src.documents.identity import IdentityDocument
 from src.inference import lssc
+from src.inference.engine import Engine
 from src.models.face import AddFaceForm, Face, FaceSource
 from src.models.gallery import GalleryStatus
 from src.models.identity import CreateIdentityForm, Identity, IdentityPage, IdentityUpdate
+from src.models.recognition import SearchGalleryForm, VerifyAgainstIdentityForm
+
+ImageForm = CreateIdentityForm | AddFaceForm | VerifyAgainstIdentityForm | SearchGalleryForm
 
 VECTOR_PARTS = ("embedding", "embeddingToken")
 
@@ -104,23 +108,23 @@ def _last_face() -> ErrorReportError:
 # ------------------------------------------------------------------ la cadena
 
 
-async def _gallery(
-    db: AsyncDatabase, caller: Caller, gallery_id: str, *, enrolling: bool = False
+async def owned_gallery(
+    db: AsyncDatabase, caller: Caller, gallery_id: str, *, usable: bool = False
 ) -> dict:
-    """La galería de la cuenta, o `404`. Para enrolar, además sin marca de
-    borrado (`404`) y sin congelar (`403`)."""
+    """La galería de la cuenta, o `404`. `usable`, para enrolar, verificar y
+    buscar: además sin marca de borrado (`404`) y sin congelar (`403`)."""
     query = {"_id": object_id(gallery_id, _gallery_missing), "accountId": caller.account_id}
-    if enrolling:
+    if usable:
         query |= LIVE
     doc = await db[GALLERIES].find_one(query, projection={"model": 1, "status": 1})
     if doc is None:
         raise _gallery_missing()
-    if enrolling and doc["status"] == GalleryStatus.frozen.value:
+    if usable and doc["status"] == GalleryStatus.frozen.value:
         raise _frozen()
     return doc
 
 
-async def _identity_exists(
+async def identity_exists(
     db: AsyncDatabase, gallery: ObjectId, identity: ObjectId, *, live: bool = False
 ) -> bool:
     query = {"_id": identity, "galleryId": gallery}
@@ -132,7 +136,9 @@ async def _identity_exists(
 # ------------------------------------------------------------------ la imagen
 
 
-def _image_only(form: CreateIdentityForm | AddFaceForm) -> UploadFile:
+def image_only(form: ImageForm) -> UploadFile:
+    """La imagen de un cuerpo que admite imagen o vector: el de las altas (F4) y
+    el de verificar y buscar (F8)."""
     sent = [part for part in VECTOR_PARTS if getattr(form, part) is not None]
     if sent:
         raise ErrorReportError(
@@ -146,15 +152,19 @@ def _image_only(form: CreateIdentityForm | AddFaceForm) -> UploadFile:
     return form.image
 
 
-async def _face_code(inference: Inference, image: UploadFile, model: str) -> bytes:
-    """El código LSSC del rostro de mayor confianza, con el modelo de la galería."""
+def lssc_code(engine: Engine, data: bytes, model: str) -> bytes:
+    """El código LSSC del rostro de mayor confianza, con el modelo de la galería.
+
+    Bloquea: corre en el hilo de trabajo, dentro de `run`. Es el camino de F4,
+    y F8 lo reutiliza para la imagen de la petición (src/controllers/recognition.py).
+    """
+    aligned = best_face(engine, data, "image")
+    return lssc.binarize(engine.embed(model, aligned), model)
+
+
+async def face_code(inference: Inference, image: UploadFile, model: str) -> bytes:
     data = await image.read()
-
-    def work() -> bytes:
-        aligned = best_face(inference.engine, data, "image")
-        return lssc.binarize(inference.engine.embed(model, aligned), model)
-
-    return await run(inference, work)
+    return await run(inference, lambda: lssc_code(inference.engine, data, model))
 
 
 def _face_document(identity: ObjectId, gallery: ObjectId, code: bytes) -> FaceDocument:
@@ -191,9 +201,9 @@ async def create_identity(
          borrando o ya no existe: se borran el rostro y la identidad recién
          insertados y la respuesta es `404`.
     """
-    image = _image_only(form)
-    gallery = await _gallery(db, caller, gallery_id, enrolling=True)
-    code = await _face_code(inference, image, gallery["model"])
+    image = image_only(form)
+    gallery = await owned_gallery(db, caller, gallery_id, usable=True)
+    code = await face_code(inference, image, gallery["model"])
 
     doc = IdentityDocument(
         galleryId=gallery["_id"], fullName=form.fullName, externalId=form.externalId
@@ -227,7 +237,7 @@ async def list_identities(
     filtro pero no el orden, y el plan ordena en memoria las identidades de la
     galería: TFM-MIS-MEM/docs#123.
     """
-    gallery = await _gallery(db, caller, gallery_id)
+    gallery = await owned_gallery(db, caller, gallery_id)
     query = {"galleryId": gallery["_id"]}
     skip = (page - 1) * page_size
     count = db[IDENTITIES].count_documents(query)
@@ -248,7 +258,7 @@ async def get_identity(
     db: AsyncDatabase, caller: Caller, gallery_id: str, identity_id: str
 ) -> Identity:
     """RETRIEVAL OPERATION."""
-    gallery = await _gallery(db, caller, gallery_id)
+    gallery = await owned_gallery(db, caller, gallery_id)
     oid = object_id(identity_id, _identity_missing)
     doc = await db[IDENTITIES].find_one({"_id": oid, "galleryId": gallery["_id"]})
     if doc is None:
@@ -269,7 +279,7 @@ async def update_identity(
     if not changes:
         return await get_identity(db, caller, gallery_id, identity_id)
 
-    gallery = await _gallery(db, caller, gallery_id)
+    gallery = await owned_gallery(db, caller, gallery_id)
     oid = object_id(identity_id, _identity_missing)
     changes["updatedAt"] = utc_now()
     try:
@@ -310,7 +320,7 @@ async def delete_identity(
     un rostro insertado tras el paso 2 no se cuenta en la identidad marcada y
     se deshace.
     """
-    gallery = await _gallery(db, caller, gallery_id)
+    gallery = await owned_gallery(db, caller, gallery_id)
     oid = object_id(identity_id, _identity_missing)
     marked = await db[IDENTITIES].update_one(
         {"_id": oid, "galleryId": gallery["_id"]}, {"$set": {DELETING: utc_now()}}
@@ -349,12 +359,12 @@ async def add_face(
       3. `$inc` del `faceCount` de la galería, filtrando la suya. Si no la
          encuentra, se borra el rostro, se descuenta de la identidad y `404`.
     """
-    image = _image_only(form)
-    gallery = await _gallery(db, caller, gallery_id, enrolling=True)
+    image = image_only(form)
+    gallery = await owned_gallery(db, caller, gallery_id, usable=True)
     oid = object_id(identity_id, _identity_missing)
-    if not await _identity_exists(db, gallery["_id"], oid, live=True):
+    if not await identity_exists(db, gallery["_id"], oid, live=True):
         raise _identity_missing()
-    code = await _face_code(inference, image, gallery["model"])
+    code = await face_code(inference, image, gallery["model"])
 
     face = _face_document(oid, gallery["_id"], code)
     face.id = (await db[FACES].insert_one(face.to_document())).inserted_id
@@ -395,12 +405,12 @@ async def delete_face(
          devuelve el decremento y `404`. → La galería por encima en 1.
       3. Descontarlo de la galería.
     """
-    gallery = await _gallery(db, caller, gallery_id)
+    gallery = await owned_gallery(db, caller, gallery_id)
     oid = object_id(identity_id, _identity_missing)
     fid = object_id(face_id, _face_missing)
     face = {"_id": fid, "identityId": oid, "galleryId": gallery["_id"]}
     if await db[FACES].find_one(face, projection={"_id": 1}) is None:
-        if not await _identity_exists(db, gallery["_id"], oid):
+        if not await identity_exists(db, gallery["_id"], oid):
             raise _identity_missing()
         raise _face_missing()
 
@@ -409,7 +419,7 @@ async def delete_face(
         {"$inc": {"faceCount": -1}},
     )
     if discounted.matched_count == 0:
-        if not await _identity_exists(db, gallery["_id"], oid):
+        if not await identity_exists(db, gallery["_id"], oid):
             raise _identity_missing()
         raise _last_face()
 
