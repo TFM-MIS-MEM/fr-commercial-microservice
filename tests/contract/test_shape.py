@@ -67,12 +67,13 @@ def get_gallery_with(model) -> dict:
 #: cabecera de `shape.py`.
 MULTIPART = (
     "multipart: el cierre del cuerpo lo prueban peticiones con una parte de más "
-    "(test_inference.py); la comparación no traduce `contentMediaType`"
+    "(test_inference.py, test_create_identity.py, test_add_face.py); la "
+    "comparación no traduce `contentMediaType`"
 )
-#: Decidido en #35: los cuerpos JSON de F3 tampoco se comparan. Las cotas del
-#: cuerpo (`maxLength`, `required`, el cierre, el `null`) las vigilan pruebas de
-#: comportamiento en los dos lados de cada una, en `test_create_gallery.py` y
-#: `test_update_gallery.py`.
+#: Decidido en #35: los cuerpos JSON de F3 tampoco se comparan, ni el de F4. Las
+#: cotas del cuerpo (`maxLength`, `minLength`, `required`, el cierre, el `null`)
+#: las vigilan pruebas de comportamiento en los dos lados de cada una, en
+#: `test_create_gallery.py`, `test_update_gallery.py` y `test_update_identity.py`.
 JSON_BODY = (
     "modo entrega: no se amplía el instrumento; las cotas del cuerpo las vigilan "
     "pruebas de comportamiento en los dos lados"
@@ -83,6 +84,9 @@ WITHOUT_BODY = {
     ("post", "/v1/fr/commercial/detection"): MULTIPART,
     ("post", "/v1/fr/commercial/verification"): MULTIPART,
     ("post", "/v1/fr/commercial/extract-embeddings"): MULTIPART,
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/identities"): MULTIPART,
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces"): MULTIPART,
+    ("patch", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}"): JSON_BODY,
 }
 
 

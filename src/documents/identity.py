@@ -8,13 +8,19 @@ una identidad huérfana con `faceCount` 0 ---el contrato dice que una identidad 
 existe sin rostro---, y la reconciliación la encuentra con una consulta:
 `{faceCount: 0}`. Crearla con 1 obligaría a escribir la misma regla dos veces.
 
-El MongoDB de este servicio es un nodo suelto, sin transacciones. Un replica set
-de un nodo las habilitaría y haría atómicos la identidad y su primer rostro; eso
-lo decide F4.
+El MongoDB de este servicio es un nodo suelto, SIN TRANSACCIONES, y F4 (#36)
+lo deja así: el almacén se despliega como instancia única. La atomicidad se
+sustituye por el ORDEN de las escrituras, con una regla: ninguna alta deja un
+contador por encima de lo que hay, y ninguna baja deja `faceCount` de la
+identidad por encima. El orden de cada operación y lo que deja una caída en
+cada punto, en `src/controllers/identities.py`.
 
 `externalId` se guarda AUSENTE cuando no hay, nunca `null`, y nunca vacío: el
 contrato exige `minLength: 1` y aquí se rechaza también, sin normalizar `""` a
 ausente. El porqué es el índice parcial de abajo.
+
+Puede llevar además la marca de borrado (`src/documents/base.DELETING`), que no
+se modela: al leer se ignora.
 """
 
 from datetime import datetime

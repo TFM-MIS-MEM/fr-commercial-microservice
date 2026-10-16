@@ -4,17 +4,22 @@
 consulta proyectada sobre esta colección, sin un `$in` de miles de identidades.
 Un rostro no se modifica, así que no lleva `updatedAt`.
 
-`embedding` existe y es binario; su formato ---binarizado, 64 B--- es de F6.
+`embedding` (F6, #38) es el CÓDIGO LSSC del vector, 192 B, calculado con el
+modelo de la galería (`src/inference/lssc.py`): 512 dimensiones × 3 bits, frente
+a 2 KB en float32. Es el formato nativo del índice: la búsqueda 1:N (F8) compara
+por distancia de Hamming sin reconstruir el vector. `isBinarized` es siempre
+`true` en lo que guarda F4; el campo existe porque el contrato prevé enrolar
+desde un vector (F7). `source` dice de dónde salió: hoy, siempre `image`.
 """
 
 from datetime import datetime
-from enum import Enum
 
 from bson import ObjectId
 from pydantic import Field
 from pymongo import ASCENDING, IndexModel
 
 from src.documents.base import Document, utc_now
+from src.models.face import FaceSource
 
 COLLECTION = "faces"
 
@@ -27,13 +32,6 @@ INDEXES = [
 ]
 
 CONFLICTS: dict[str, str] = {}
-
-
-class FaceSource(str, Enum):
-    """`Face.source` del contrato. Vive aquí hasta que F4 cree el modelo de API."""
-
-    image = "image"
-    embedding = "embedding"
 
 
 class FaceDocument(Document):

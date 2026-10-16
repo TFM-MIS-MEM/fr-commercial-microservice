@@ -45,10 +45,11 @@ y ninguna se puede dejar a la validación de respuestas:
      lector.
 
 ALCANCE DEL CIERRE EN LOS CUERPOS, sin redondear: que un campo de más dé `400`
-está PROBADO en cuerpos JSON (`test_rejections.py`) y en los tres cuerpos
-`multipart/form-data` de F5 (`test_inference.py`). En los otros cinco es una
+está PROBADO en cuerpos JSON (`test_rejections.py`), en los tres cuerpos
+`multipart/form-data` de F5 (`test_inference.py`) y en los dos de F4
+(`test_create_identity.py`, `test_add_face.py`). En los otros tres es una
 obligación del contrato que vigila esta prueba y que tienen que cumplir las
-operaciones que los implementen (F4, F8, F12): el mecanismo medido está en
+operaciones que los implementen (F8, F12): el mecanismo medido está en
 `src/models/__init__.py`.
 """
 
@@ -136,7 +137,7 @@ def test_the_declared_open_ones_exist_and_are_open():
 
 def test_the_multipart_bodies_are_closed_too():
     # Nombrado aparte porque es donde el cierre del contrato va por delante del
-    # código: hoy ninguna operación multipart está implementada.
+    # código: de los ocho, tres siguen sin implementar (F8, F12).
     bodies = {
         op["operationId"]: op["requestBody"]["content"]["multipart/form-data"]["schema"]
         for _, _, _, op in _operations()

@@ -23,22 +23,21 @@ la escritura, y una galería ajena es, también aquí, una galería que no exist
 
 LA UNICIDAD DEL NOMBRE la garantiza el índice, no una consulta previa: se
 escribe sin comprobar y el `DuplicateKeyError` se traduce según el índice que
-saltó (`src/documents.conflict_code`). La consulta previa tendría una carrera
-entre la lectura y la escritura.
+saltó (`src/controllers/common.conflict`). La consulta previa tendría una
+carrera entre la lectura y la escritura.
 """
 
 import asyncio
 
 from bson import ObjectId
-from bson.errors import InvalidId
 from pymongo import ASCENDING, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import DuplicateKeyError
 
+from src.controllers.common import MAX_SKIP, conflict, not_found, object_id
 from src.core.errors import ErrorReportError
 from src.core.identity import Identity
-from src.documents import conflict_code
-from src.documents.base import utc_now
+from src.documents.base import DELETING, utc_now
 from src.documents.face import COLLECTION as FACES
 from src.documents.gallery import COLLECTION, GalleryDocument
 from src.documents.identity import COLLECTION as IDENTITIES
@@ -53,33 +52,13 @@ from src.models.gallery import Gallery, GalleryCreate, GalleryPage, GalleryUpdat
 #: congele, F10 tendrá que reconciliar las que se hayan creado antes.
 DEFAULT_MODEL = ModelName.xs
 
-MESSAGES = {"GALLERY_NAME_ALREADY_EXISTS": "A gallery with that name already exists"}
-
-#: Mayor `skip` que admite MongoDB (entero de 64 bits). `page` no tiene
-#: `maximum` en el contrato: una página que ninguna cuenta puede alcanzar es una
-#: página vacía, no un `500` por desbordamiento al codificar la consulta.
-MAX_SKIP = 2**63 - 1
-
 
 def _not_found() -> ErrorReportError:
-    return ErrorReportError(404, "NOT_FOUND", "Gallery not found")
+    return not_found("Gallery")
 
 
 def _object_id(gallery_id: str) -> ObjectId:
-    try:
-        return ObjectId(gallery_id)
-    except (InvalidId, TypeError):
-        # Ninguna operación por `galleryId` declara `400`: un identificador que
-        # no puede existir es, para el cliente, una galería que no existe.
-        raise _not_found() from None
-
-
-def _conflict(exc: DuplicateKeyError) -> ErrorReportError:
-    code = conflict_code(exc)
-    if code is None:
-        # Un índice único que no está en `CONFLICTS` no es un `409` declarado.
-        raise exc
-    return ErrorReportError(409, code, MESSAGES[code])
+    return object_id(gallery_id, _not_found)
 
 
 async def create_gallery(db: AsyncDatabase, identity: Identity, body: GalleryCreate) -> Gallery:
@@ -94,7 +73,7 @@ async def create_gallery(db: AsyncDatabase, identity: Identity, body: GalleryCre
     try:
         result = await db[COLLECTION].insert_one(doc.to_document())
     except DuplicateKeyError as exc:
-        raise _conflict(exc) from None
+        raise conflict(exc) from None
     doc.id = result.inserted_id
     return Gallery.from_document(doc)
 
@@ -171,7 +150,7 @@ async def update_gallery(
             return_document=ReturnDocument.AFTER,
         )
     except DuplicateKeyError as exc:
-        raise _conflict(exc) from None
+        raise conflict(exc) from None
     if doc is None:
         raise _not_found()
     return Gallery.from_document(GalleryDocument.model_validate(doc))
@@ -181,20 +160,33 @@ async def delete_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str)
     """STATE TRANSITION OPERATION, en cascada. Permitida sobre una congelada.
 
     SIN TRANSACCIONES (el MongoDB de este servicio es un nodo suelto), así que
-    importa el ORDEN: rostros, identidades y la galería AL FINAL. Si el proceso
-    cae a mitad, la galería sigue existiendo y visible ---con los contadores
-    desfasados---, y repetir el `DELETE` termina el trabajo. En el orden inverso
-    quedarían identidades y rostros huérfanos que ninguna operación alcanza.
-    Lo prueba `tests/contract/test_delete_gallery.py`, con una caída inyectada
-    en cada uno de los dos últimos pasos.
+    importa el ORDEN: marca, rostros, identidades y la galería AL FINAL. Si el
+    proceso cae a mitad, la galería sigue existiendo y visible ---con los
+    contadores desfasados---, y repetir el `DELETE` termina el trabajo. En el
+    orden inverso quedarían identidades y rostros huérfanos que ninguna
+    operación alcanza. Lo prueba `tests/contract/test_delete_gallery.py`, con
+    una caída inyectada en cada uno de los dos últimos pasos.
 
-    QUEDA ABIERTA una carrera con F4: un `addFace` concurrente puede insertar un
-    rostro entre el borrado de los rostros y el de la galería. Anotada en
-    TFM-MIS-MEM/docs#36.
+    LA MARCA DE BORRADO (`deletingAt`) cierra la carrera con las altas de F4
+    (TFM-MIS-MEM/docs#36). Sin ella, un `createIdentity` o un `addFace` que
+    hubiera leído la galería antes podía insertar DESPUÉS de los `delete_many`
+    y contarse en la galería ANTES de su `delete_one`: respondía `201` y dejaba
+    datos biométricos de una galería borrada. Con ella, el `$inc` de las altas
+    filtra la marca (`src/documents/base.LIVE`): o llega antes de la marca, y entonces sus
+    inserciones son anteriores a los `delete_many` y se borran con todo lo
+    demás; o no encuentra la galería, deshace lo que insertó y responde `404`
+    (`src/controllers/identities`). Lo prueba `tests/contract/test_races.py`
+    forzando ese entrelazado.
+
+    La marca sustituye a la lectura de propiedad: si no casa, la galería no
+    existe o es de otra cuenta, y no se ha escrito nada. Tras una caída la
+    galería marcada sigue visible y repetir el `DELETE` termina; mientras
+    tanto, las altas sobre ella dan `404`.
     """
     oid = _object_id(gallery_id)
     owner = {"_id": oid, "accountId": identity.account_id}
-    if await db[COLLECTION].find_one(owner, projection={"_id": 1}) is None:
+    marked = await db[COLLECTION].update_one(owner, {"$set": {DELETING: utc_now()}})
+    if marked.matched_count == 0:
         raise _not_found()
 
     await db[FACES].delete_many({"galleryId": oid})

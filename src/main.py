@@ -25,7 +25,7 @@ import torch
 from fastapi import FastAPI
 from starlette.concurrency import run_in_threadpool
 
-from src.api import docs, galleries, health, inference
+from src.api import docs, galleries, health, identities, inference
 from src.controllers.inference import Inference
 from src.core.database import connect, ensure_indexes
 from src.core.errors import install_error_handlers
@@ -96,5 +96,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(docs.router)
     app.include_router(galleries.router)
+    app.include_router(identities.router)
     app.include_router(inference.router)
     return app

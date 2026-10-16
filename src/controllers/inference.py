@@ -72,7 +72,7 @@ class Inference:
     torch_threads: int | None = None
 
 
-async def _run(inference: Inference, work: Callable[[], T]) -> T:
+async def run(inference: Inference, work: Callable[[], T]) -> T:
     def in_worker() -> T:
         wanted = inference.torch_threads
         if wanted is not None and torch.get_num_threads() != wanted:
@@ -93,7 +93,7 @@ def _png_base64(image: Image.Image) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def _best_face(engine: Engine, data: bytes, part: str) -> Image.Image:
+def best_face(engine: Engine, data: bytes, part: str) -> Image.Image:
     """El recorte alineado del rostro de mayor confianza, o `NO_FACE_DETECTED`."""
     image = open_image(data)
     faces = engine.detect(image)
@@ -137,7 +137,7 @@ async def detect_faces(inference: Inference, form: DetectFacesForm) -> DetectFac
         )
         return result
 
-    return await _run(inference, work)
+    return await run(inference, work)
 
 
 VECTOR_PARTS = ("embedding1", "embeddingToken1", "embedding2", "embeddingToken2")
@@ -160,8 +160,8 @@ async def verify_pair(inference: Inference, form: VerifyPairForm) -> Verificatio
 
     def work() -> VerificationResult:
         started = perf_counter()
-        aligned1 = _best_face(inference.engine, data1, "image1")
-        aligned2 = _best_face(inference.engine, data2, "image2")
+        aligned1 = best_face(inference.engine, data1, "image1")
+        aligned2 = best_face(inference.engine, data2, "image2")
         detected = perf_counter()
         code1 = lssc.binarize(inference.engine.embed(model, aligned1), model)
         code2 = lssc.binarize(inference.engine.embed(model, aligned2), model)
@@ -184,7 +184,7 @@ async def verify_pair(inference: Inference, form: VerifyPairForm) -> Verificatio
             model=versioned(model),
         )
 
-    return await _run(inference, work)
+    return await run(inference, work)
 
 
 async def extract_embedding(
@@ -202,7 +202,7 @@ async def extract_embedding(
 
     def work() -> ExtractEmbeddingResult:
         started = perf_counter()
-        aligned = _best_face(inference.engine, data, "image")
+        aligned = best_face(inference.engine, data, "image")
         detected = perf_counter()
         vector = inference.engine.embed(model, aligned)
         if form.returnBinarized:
@@ -227,4 +227,4 @@ async def extract_embedding(
             isBinarized=form.returnBinarized,
         )
 
-    return await _run(inference, work)
+    return await run(inference, work)

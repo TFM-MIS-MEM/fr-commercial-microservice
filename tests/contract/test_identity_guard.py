@@ -11,7 +11,8 @@ Y se ata al contrato por los dos lados, para que no pueda pasar vacío:
   - El contrato declara 27 operaciones y todas con `security`. Si ese número
     cambia, esta prueba lo dice.
   - El conjunto de operaciones implementadas es EXACTAMENTE el esperado. Hoy,
-    las cinco de galerías (F3, #35) y las tres de inferencia de F5. Una
+    las cinco de galerías (F3, #35), las tres de inferencia de F5 y las siete
+    de identidades y rostros (F4, #36). Una
     operación nueva obliga a tocar `harness.IMPLEMENTED`, y con ello a que la
     prueba de 401 y la comparación estática la recorran.
 

@@ -13,7 +13,7 @@ import pytest
 import torch
 from fastapi.testclient import TestClient
 
-from src.controllers.inference import _run
+from src.controllers.inference import run
 from src.core.settings import CHECKPOINTS_DIR
 from src.main import create_app
 from tests.contract.harness import BASE_URL
@@ -50,9 +50,9 @@ def test_the_torch_threads_are_set_in_the_worker_that_infers(client):
     """El ajuste es por hilo (src/controllers/inference.py): se comprueba en el
     hilo que ejecuta el trabajo, no en el que arrancó el servicio."""
     inference = replace(client.app.state.inference, semaphore=asyncio.Semaphore(1))
-    before = asyncio.run(_run(inference, torch.get_num_threads))
+    before = asyncio.run(run(inference, torch.get_num_threads))
     try:
-        assert asyncio.run(_run(replace(inference, torch_threads=2), torch.get_num_threads)) == 2
-        assert asyncio.run(_run(replace(inference, torch_threads=3), torch.get_num_threads)) == 3
+        assert asyncio.run(run(replace(inference, torch_threads=2), torch.get_num_threads)) == 2
+        assert asyncio.run(run(replace(inference, torch_threads=3), torch.get_num_threads)) == 3
     finally:
-        asyncio.run(_run(replace(inference, torch_threads=before), torch.get_num_threads))
+        asyncio.run(run(replace(inference, torch_threads=before), torch.get_num_threads))
