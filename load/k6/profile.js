@@ -3,8 +3,9 @@
 // La lanza `load/most.py`; todos los parámetros entran por entorno:
 //
 //   TARGET   fr | calib
-//   OP       verifyPair | detectFaces
+//   OP       verifyPair | detectFaces | searchGallery
 //   MODEL    xs | s | base (verifyPair)
+//   GALLERY  la galería sembrada (searchGallery), del entorno del contenedor
 //   RATE     peticiones por segundo de la ventana medida
 //   WINDOW   segundos de la ventana medida
 //   WARMUP   segundos de calentamiento, al 50 % de RATE, que se descartan
@@ -26,6 +27,8 @@ const SLICES = Number(__ENV.SLICES || 3);
 const OP = __ENV.OP || 'verifyPair';
 const MODEL = __ENV.MODEL || 'xs';
 const TARGET = __ENV.TARGET || 'fr';
+const GALLERY = __ENV.GALLERY || '';
+if (OP === 'searchGallery' && !GALLERY) throw new Error('searchGallery exige GALLERY');
 
 // Con más peticiones en vuelo que tres segundos de llegadas, la latencia media
 // pasa de 3 s (ley de Little): eso ya no es un servicio que da abasto. Con todos
@@ -36,7 +39,11 @@ const MAX_VUS = Math.max(10, Math.ceil(3 * RATE));
 // necesita por debajo de 1/s (1:N).
 const per100s = (r) => Math.max(1, Math.round(r * 100));
 
-const PATHS = { verifyPair: '/v1/fr/commercial/verification', detectFaces: '/v1/fr/commercial/detection' };
+const PATHS = {
+  verifyPair: '/v1/fr/commercial/verification',
+  detectFaces: '/v1/fr/commercial/detection',
+  searchGallery: `/v1/fr/commercial/galleries/${GALLERY}/search`,
+};
 const URL = `http://${TARGET}:8000${PATHS[OP]}`;
 
 const IMAGE1 = open('/load/fixtures/koch_2014_480x640.jpg', 'b');
@@ -87,6 +94,9 @@ export const options = {
 
 function body() {
   if (OP === 'detectFaces') return { image: http.file(IMAGE1, 'a.jpg', 'image/jpeg') };
+  // Sin `threshold`: el umbral por omisión del modelo de la galería (xs). La
+  // identidad enrolada es la de IMAGE2; la búsqueda tiene que coincidir.
+  if (OP === 'searchGallery') return { image: http.file(IMAGE1, 'a.jpg', 'image/jpeg') };
   return {
     image1: http.file(IMAGE1, 'a.jpg', 'image/jpeg'),
     image2: http.file(IMAGE2, 'b.jpg', 'image/jpeg'),
@@ -109,7 +119,7 @@ export default function () {
 }
 
 export function handleSummary(data) {
-  const params = { TARGET, OP, MODEL, RATE, WINDOW, WARMUP, SLICES, MAX_VUS };
+  const params = { TARGET, OP, MODEL, RATE, WINDOW, WARMUP, SLICES, MAX_VUS, GALLERY };
   const m = data.metrics;
   const d = m['http_req_duration{scenario:measure}'];
   const line = `rate=${RATE} reqs=${d ? d.values.count : 0} med=${d ? d.values.med.toFixed(0) : '-'}ms\n`;

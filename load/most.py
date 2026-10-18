@@ -11,6 +11,8 @@ resultado final: eso es `analyze.py`, desde lo guardado.
     python3 load/most.py most  ... --only mst --mit 12.5                     # MST con MIT dado
     python3 load/most.py drift --serie S ... --rate 11 --window 900 --slices 15
     python3 load/most.py chain                                               # la noche
+    python3 load/most.py search                                              # los tres 1:N
+    python3 load/most.py seed  --faces 50000                                 # solo la siembra
 
 EL PROCEDIMIENTO
 - Cada corrida: 30 s de calentamiento al 50 % (descartados) y la ventana medida.
@@ -40,6 +42,13 @@ dos de mayor MIT → deriva de 15 min a 0,9·MIT de la de mayor MST → MoST com
 de verifyPair xs con ella. La deriva es la puerta: si no cumple las tres
 restricciones con tercios de 5 min, la cadena termina sin medir xs. El estado,
 en `results/chain-status.json`.
+
+LOS PERFILES 1:N (`search`, TFM-MIS-MEM/docs#62): searchGallery con `xs` y
+galerías de 5.000, 20.000 y 50.000 rostros, en secuencia, cada uno con su MoST
+completo en `w1t1c8`. Tras levantar el banco, `seed.py` siembra la galería y la
+comprueba (bloquea: si falla, el perfil no se mide); al acabar, la vuelve a
+comprobar, y si esa falla el perfil queda como no válido. El estado, en
+`results/search-status.json`.
 
 Python 3.9, solo biblioteca estándar: es el intérprete del anfitrión.
 """
@@ -97,6 +106,14 @@ class Abort(SystemExit):
 
 class PreconditionFailed(Abort):
     """La máquina dejó de estar en condiciones: la cadena entera se detiene."""
+
+
+class GalleryInvalid(Abort):
+    """La comprobación final de la galería falló: el perfil no vale."""
+
+    def __init__(self, reason: str, result: dict):
+        super().__init__(reason)
+        self.result = result
 
 
 def sh(cmd: list[str], env: dict | None = None, check: bool = True) -> str:
@@ -245,6 +262,40 @@ class Service:
         out["oom_kill"] = int(events.get("oom_kill", 0))
         out["memory_peak_bytes"] = int(numbers[0]) if numbers else None
         out["memory_current_bytes"] = int(numbers[1]) if len(numbers) > 1 else None
+        out["cpu"] = cgroup_cpu(cid)
+        out["mongo"] = self.mongo_state()
+        return out
+
+    def mongo_state(self) -> dict:
+        """Lo que se registra de MongoDB, que entra en la medida con 1:N.
+
+        Solo se anota, no invalida nada. `cpu.stat` ANTES de `mongosh`, que es un
+        proceso de Node dentro del cgroup de mongo. `opLatencies.reads`, en
+        crudo: latencia acumulada (µs) y operaciones de lectura.
+        """
+        cid = self.compose("ps", "-q", "mongo", check=False).strip()
+        if not cid:
+            return {"running": False}
+        found = json.loads(sh(["docker", "inspect", cid], check=False) or "[]")
+        if not found:
+            return {"container": cid[:12], "running": False}
+        inspect = found[0]
+        out = {
+            "container": cid[:12],
+            "started_at": inspect["State"]["StartedAt"],
+            "restart_count": inspect["RestartCount"],
+            "running": inspect["State"]["Running"],
+            "oom_killed": inspect["State"]["OOMKilled"],
+        }
+        if not out["running"]:
+            return out
+        out["cpu"] = cgroup_cpu(cid)
+        reads = "EJSON.stringify(db.serverStatus().opLatencies.reads, {relaxed: true})"
+        raw = sh(["docker", "exec", cid, "mongosh", "--quiet", "--eval", reads], check=False)
+        try:
+            out["op_latencies_reads"] = json.loads(raw.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            out["op_latencies_reads"] = None
         return out
 
     def cpu(self) -> float:
@@ -260,6 +311,23 @@ class Service:
             if time.time() > deadline:
                 raise Abort("fr no se queda en reposo en 10 minutos")
         time.sleep(REST_S)
+
+
+def cgroup_cpu(cid: str) -> dict:
+    """`cpu.stat` del cgroup del contenedor, con la hora de la lectura.
+
+    La vCPU media entre dos lecturas es Δusage_usec / Δsampled_at / 10⁶. Entre
+    `service_before` y `service_after` abarca el calentamiento y la ventana.
+    """
+    t0 = time.time()
+    raw = sh(["docker", "exec", cid, "cat", "/sys/fs/cgroup/cpu.stat"], check=False)
+    t1 = time.time()
+    stat = {}
+    for line in raw.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            stat[parts[0]] = int(parts[1])
+    return {"sampled_at": round((t0 + t1) / 2, 3), **stat}
 
 
 def invalid_reason(before: dict, after: dict) -> str | None:
@@ -490,6 +558,8 @@ class Runner:
 def profile_name(args: argparse.Namespace) -> str:
     if args.target == "calib":
         return "calibration"
+    if args.op == "searchGallery":
+        return f"{args.op}-{args.model}-{args.faces}"
     return f"{args.op}-{args.model}" if args.op == "verifyPair" else args.op
 
 
@@ -524,10 +594,78 @@ def execute(args: argparse.Namespace) -> dict:
         print(f"{now()} · {profile_name(args)} · {service.tag} · arrancando", flush=True)
         service.up()
         runner = Runner(args, service)
-        return (cmd_most if args.cmd == "most" else cmd_drift)(args, runner)
+        seeded = None
+        if args.op == "searchGallery":
+            seeded = seed_gallery(service, args.faces, runner.dir / f"{runner.seq():03d}-gallery")
+        result = (cmd_most if args.cmd == "most" else cmd_drift)(args, runner)
+        if seeded is not None:
+            end_path = runner.dir / f"{runner.seq():03d}-gallery-end.json"
+            end = check_gallery(service, seeded, end_path)
+            result["gallery"] = {**seeded, "end_ok": end["ok"]}
+            if not end["ok"]:
+                raise GalleryInvalid("comprobación final: " + "; ".join(end["problems"]), result)
+        return result
     finally:
         if not args.keep:
             service.down()
+
+
+# ------------------------------------------------------------ galería 1:N
+
+
+def seed_tool(service: Service, *args: str) -> tuple[dict | None, str]:
+    """`seed.py` en su contenedor: el JSON de su última línea y el error."""
+    done = subprocess.run(
+        [*COMPOSE, "--profile", "tools", "run", "--rm", "--no-deps", "seed", *args],
+        capture_output=True,
+        text=True,
+        env=service.env,
+    )
+    lines = done.stdout.strip().splitlines()
+    try:
+        return json.loads(lines[-1]), done.stderr[-1000:]
+    except (ValueError, IndexError):
+        return None, f"salida {done.returncode}: {done.stdout[-500:]} {done.stderr[-1000:]}"
+
+
+def seed_gallery(service: Service, faces: int, stem: Path | None) -> dict:
+    """Siembra y comprobación inicial, que bloquea; deja la galería a k6."""
+    started = time.monotonic()
+    seeded, err = seed_tool(service, "seed", "--faces", str(faces))
+    if seeded is None or "gallery" not in seeded:
+        raise Abort(f"la siembra de {faces} rostros falló: {seeded or err}")
+    seeded["wall_s"] = round(time.monotonic() - started, 2)
+    if stem is not None:
+        stem.with_name(stem.name + "-seed.json").write_text(json.dumps(seeded, indent=1))
+    print(f"{now()} · galería de {faces} sembrada en {seeded['wall_s']} s · {seeded}", flush=True)
+    path = stem.with_name(stem.name + "-start.json") if stem is not None else None
+    start = check_gallery(service, seeded, path)
+    if not start["ok"]:
+        raise Abort("comprobación inicial: " + "; ".join(start["problems"]))
+    service.env["GALLERY"] = seeded["gallery"]
+    return seeded
+
+
+def check_gallery(service: Service, seeded: dict, path: Path | None) -> dict:
+    """N rostros, contadores, forma BSON y una búsqueda que coincide."""
+    result, err = seed_tool(
+        service,
+        "check",
+        "--faces",
+        str(seeded["faces"]),
+        "--gallery",
+        seeded["gallery"],
+        "--identity",
+        seeded["identity"],
+    )
+    if result is None or "ok" not in result:
+        result = {"ok": False, "problems": [f"la comprobación no terminó: {result or err}"]}
+    result.update(at=now(), seed=seeded, mongo=service.mongo_state())
+    if path is not None:
+        path.write_text(json.dumps(result, indent=1, ensure_ascii=False))
+    verdict = "bien" if result["ok"] else "FALLA: " + "; ".join(result["problems"])
+    print(f"{now()} · comprobación de la galería: {verdict}", flush=True)
+    return result
 
 
 # ------------------------------------------------------------ cadena nocturna
@@ -674,6 +812,82 @@ def cmd_chain(args: argparse.Namespace) -> None:
     print(f"{now()} · cadena: {chain.status['state']} · {chain.status['reason'] or ''}", flush=True)
 
 
+# ------------------------------------------------------------ perfiles 1:N
+
+SEARCH_SIZES = (5000, 20000, 50000)
+
+
+def cmd_search(args: argparse.Namespace) -> None:
+    """Los tres perfiles 1:N en secuencia, fijados como `Chain.step`.
+
+    Un perfil que falla (siembra, comprobación o búsqueda) se anota con su motivo
+    y la secuencia sigue con el siguiente; una precondición incumplida la para.
+    """
+    path = Path(args.results).resolve() / "search-status.json"
+    status = {"state": "running", "started": now(), "stage": None, "reason": None, "profiles": {}}
+
+    def save(**changes: object) -> None:
+        status.update(changes, updated=now())
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(status, indent=1, ensure_ascii=False))
+        tmp.replace(path)
+
+    try:
+        save()
+        preconditions(False)
+        for faces in SEARCH_SIZES:
+            step = argparse.Namespace(
+                cmd="most",
+                serie="campaign",
+                target="fr",
+                op="searchGallery",
+                model="xs",
+                faces=faces,
+                workers=1,
+                threads=1,
+                concurrency=8,
+                results=args.results,
+                skip_preconditions=False,
+                keep=False,
+                only=None,
+                mit=None,
+                bracket=None,
+                no_confirm=False,
+            )
+            name = profile_name(step)
+            save(stage=name)
+            try:
+                status["profiles"][name] = {"valid": True, **execute(step)}
+            except PreconditionFailed:
+                raise
+            except GalleryInvalid as exc:
+                status["profiles"][name] = {"valid": False, "reason": str(exc), **exc.result}
+            except Abort as exc:
+                status["profiles"][name] = {"valid": False, "reason": str(exc)}
+            save()
+        save(state="finished", stage=None)
+    except Abort as exc:
+        save(state="stopped", reason=str(exc))
+        raise
+    except BaseException as exc:
+        save(state="failed", reason=f"{type(exc).__name__}: {exc}")
+        raise
+    print(f"{now()} · 1:N: {status['state']}", flush=True)
+
+
+def cmd_seed(args: argparse.Namespace) -> None:
+    """Solo la siembra y su comprobación, con sus tiempos. No mide nada."""
+    service = Service("fr", 1, 1, 8)
+    try:
+        service.up()
+        started = time.monotonic()
+        seeded = seed_gallery(service, args.faces, None)
+        print(json.dumps({**seeded, "seed_and_check_s": round(time.monotonic() - started, 2)}))
+    finally:
+        if not args.keep:
+            service.down()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -681,11 +895,19 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     chain = sub.add_parser("chain", help="la cadena nocturna, en un solo proceso")
     chain.add_argument("--results", default=str(LOAD / "results"))
+    search = sub.add_parser("search", help="los tres perfiles 1:N, en un solo proceso")
+    search.add_argument("--results", default=str(LOAD / "results"))
+    seed = sub.add_parser("seed", help="solo la siembra de una galería, con su tiempo")
+    seed.add_argument("--faces", type=int, required=True)
+    seed.add_argument("--keep", action="store_true", help="no parar el compose al acabar")
     for name in ("most", "drift"):
         p = sub.add_parser(name)
         p.add_argument("--serie", required=True)
         p.add_argument("--target", choices=["fr", "calib"], default="fr")
-        p.add_argument("--op", choices=["verifyPair", "detectFaces"], default="verifyPair")
+        p.add_argument(
+            "--op", choices=["verifyPair", "detectFaces", "searchGallery"], default="verifyPair"
+        )
+        p.add_argument("--faces", type=int, help="rostros de la galería (searchGallery)")
         p.add_argument("--model", choices=["xs", "s", "base"], default="xs")
         p.add_argument("--workers", type=int, default=1)
         p.add_argument("--threads", type=int, default=1)
@@ -707,8 +929,17 @@ def main() -> None:
             p.add_argument("--window", type=int, default=900)
             p.add_argument("--slices", type=int, default=15)
     args = parser.parse_args()
+    if args.cmd in ("most", "drift"):
+        if (args.op == "searchGallery") != (args.faces is not None):
+            parser.error("--faces va con --op searchGallery, y solo con ella")
+        if args.op == "searchGallery" and args.target != "fr":
+            parser.error("searchGallery solo con --target fr")
     if args.cmd == "chain":
         cmd_chain(args)
+    elif args.cmd == "search":
+        cmd_search(args)
+    elif args.cmd == "seed":
+        cmd_seed(args)
     else:
         execute(args)
 
