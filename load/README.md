@@ -15,6 +15,7 @@ resúmenes crudos guardados en `results/`, sin cálculos a mano.
 | `most.py` | Precondiciones, búsqueda, confirmación y corridas inválidas. Guarda cada corrida. |
 | `analyze.py` | MST, MIT, ráfaga y σ desde `results/`, en Markdown. |
 | `calibration/server.py` | Servicio sintético de capacidad conocida: 100 ms, una petición a la vez. |
+| `seed.py` | Siembra y comprobación de la galería de un perfil 1:N. Corre en el contenedor `seed`. |
 | `fixtures/` | La imagen de la campaña, 480 × 640 (`SOURCES.md`). |
 
 ## Qué se mide, y qué no
@@ -117,6 +118,62 @@ uvicorn (uno muere y el supervisor lo sustituye) o si hay un OOM en su cgroup.
 | Imagen | 480 × 640, `fixtures/` | Una sola, en el tramo de < 0,5 MP. El coste de MTCNN depende de los píxeles. |
 | Perfil 1:1 | `verifyPair`, con un par de la misma persona | Existe ya, sin esperar a F8. |
 | Workers × hilos × concurrencia | **1 × 1 × 8** (`w1t1c8`): la de mayor MST en la exploración (`results/exploration/`) | Una para todos los perfiles: con una por perfil, σ compararía configuraciones y no modelos. |
+| Perfiles 1:N | `searchGallery` con `xs` y galerías de **5.000, 20.000 y 50.000** rostros | Varios tamaños para estimar `f(tamaño_galería)`; un solo modelo, porque a 480 × 640 los tres cuestan lo mismo dentro del error del método. |
+
+## Los perfiles 1:N
+
+TFM-MIS-MEM/docs#62. `searchGallery` contra una galería sembrada, sin recalibrar:
+añadir la búsqueda a `k6/profile.js` es la única excepción a la congelación del
+instrumento (`b6fff3d`), y lo que cambia en `most.py` es aditivo (la operación,
+el tamaño, la siembra y lo que se anota), sin tocar la corrida, la búsqueda, la
+confirmación ni la validez.
+
+**La siembra** (`seed.py`, en el contenedor `seed`: la imagen de `fr`, en la red
+`internal` y en los vCPU 0–1 de k6). Una vez por perfil, después de levantar el
+banco y antes de la primera corrida:
+
+- una galería `xs` creada por la API con la cuenta de k6 (`X-Account-Id
+  load-most`), y una identidad enrolada por la API con `koch_2023`: la que tiene
+  que coincidir con la imagen de k6 (`koch_2014`, sin `threshold`);
+- el resto, hasta N rostros exactos, directamente en MongoDB: **un rostro por
+  identidad**, códigos aleatorios de 192 B (`random.Random(N)`, reproducibles),
+  construidos con las clases de persistencia del servicio y por lotes en el
+  orden de `createIdentity`, de modo que la galería cumpla los invariantes de
+  los contadores.
+
+**La comprobación, que bloquea**, al empezar y otra vez al acabar el perfil: N
+rostros y N identidades; `faceCount` e `identityCount` de la galería, N; cada
+identidad con `faceCount` 1; el rostro sembrado con la misma forma BSON que el
+enrolado y los dos por la vía rápida de `stored_code`; y una búsqueda con la
+imagen de k6 que devuelve `200` con la identidad enrolada. Si falla la inicial,
+el perfil no se mide; si falla la final, queda como no válido en
+`results/search-status.json`, con el motivo. En los dos casos la secuencia sigue
+con el perfil siguiente.
+
+**Por qué basta una comprobación por perfil, y no una por corrida.** La galería
+vive en MongoDB, no en `fr`: un reinicio de `fr` no la toca. La única
+recreación dentro de un perfil es la de una corrida inválida (`up
+--force-recreate fr`), que no recrea mongo; y aunque lo hiciera, compose
+conserva su volumen anónimo. La búsqueda no escribe, y el `down` llega después
+de la comprobación final. Íntegra al empezar, íntegra al acabar y con el mismo
+`started_at` de mongo en todas las corridas, la galería es la misma en todas.
+Si mongo cayera en mitad de una corrida, ésta contaría como «no pasa» y no como
+inválida: la validez está congelada. Quedaría a la vista en el `.meta.json`.
+
+**MongoDB entra en la medida por primera vez**, en los vCPU 0–1 que comparte con
+k6 y con el fondo de la VM. Los 10 vCPU están repartidos; no hay uno libre para
+él. Por eso se anota en cada corrida, antes y después (`service_before.mongo`,
+`service_after.mongo`): `cpu.stat` de su cgroup, `started_at`, `restart_count`,
+`oom_killed` y `serverStatus().opLatencies.reads` en crudo (latencia acumulada
+en µs y operaciones). También el `cpu.stat` de `fr` (`service_*.cpu`). La vCPU
+media es Δ`usage_usec` / Δ`sampled_at`, y abarca el calentamiento al 50 % y la
+ventana.
+
+**Criterio: un perfil lo limita MongoDB, y no `fr`**, si en las corridas que
+fallan la latencia media de lectura de mongo (Δ`latency` / Δ`ops`) sube
+claramente sobre la de la corrida a 1/s del mismo perfil, mientras la CPU de
+`fr` se queda por debajo de la que alcanzó en el MST de 5.000. La interpretación
+numérica es de `analyze.py`.
 
 ## Uso
 
@@ -162,6 +219,16 @@ cat load/results/chain-status.json    # estado, etapa, resultados y motivo de pa
 tail -f load/results/chain.log        # una línea por corrida
 ```
 
+**Los tres perfiles 1:N**, en secuencia y sin intervención: 5.000, 20.000 y
+50.000 rostros, cada uno con su MoST completo en `w1t1c8`, serie `campaign`.
+`seed` solo siembra y comprueba una galería, con sus tiempos.
+
+```sh
+nohup caffeinate -i python3 load/most.py search >> load/results/search.log 2>&1 < /dev/null &
+cat load/results/search-status.json   # perfil en curso, resultados y motivos
+python3 load/most.py seed --faces 50000
+```
+
 Python 3.9 del sistema, solo biblioteca estándar. `most.py` arranca y para el
 compose; el secreto de `fr` lo genera en cada ejecución y no lo escribe en
 ningún sitio.
@@ -176,7 +243,7 @@ lado, `.meta.json` guarda:
 - la validez;
 - commit e imágenes;
 - el estado de `fr` antes y después: procesos, reinicios, OOM y pico de memoria
-  del cgroup;
+  del cgroup; su `cpu.stat`, y el de MongoDB con sus lecturas (1:N, arriba);
 - el del anfitrión al principio y al final: corriente, bajo consumo, `uptime`,
   swap usado (`sysctl vm.swapusage`) y otros contenedores. El crecimiento del
   swap durante la corrida queda en `swap_growth_mb`; no la invalida, pero se ve.
@@ -188,3 +255,8 @@ confirmación, las inválidas y el crecimiento del swap; la descomposición
 aproximada de `verifyPair` en dos detecciones más el resto; la distribución del
 cociente de medianas que sostiene el umbral; y las corridas con cociente por
 debajo de 0,8.
+
+En los perfiles 1:N, junto a las corridas: `NNN-gallery-seed.json` (galería,
+identidad enrolada y tiempos de la siembra), `NNN-gallery-start.json` y
+`NNN-gallery-end.json` (las dos comprobaciones, con el estado de mongo). `NNN`
+es el número de la corrida siguiente.

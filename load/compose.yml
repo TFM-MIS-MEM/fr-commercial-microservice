@@ -20,8 +20,10 @@ name: fr-load
 
 services:
   mongo:
-    # Solo para arrancar: `fr` hace `ping` y crea sus índices o no arranca. Las
-    # operaciones medidas hoy no la tocan. Sin volumen: nada se conserva.
+    # `fr` hace `ping` y crea sus índices o no arranca. La única operación
+    # medida que la toca es `searchGallery`: su galería la siembra `seed`, y su
+    # CPU y sus lecturas quedan en el `.meta.json` de cada corrida. Sin volumen
+    # declarado: el `down` de cada perfil se lleva la galería.
     image: mongo:7.0@sha256:b6421fd6d1c5ded6377b397d8983e2f82e2100dc5123332dcfda2065a472be5b
     cpuset: "0-1"
     networks: [load]
@@ -87,8 +89,27 @@ services:
     cpuset: "0-1"
     # Solo con `docker compose run`: no es un servicio que quede levantado.
     profiles: [tools]
+    # La galería de `searchGallery`, del entorno de most.py; k6 la lee en __ENV.
+    environment:
+      - GALLERY
     volumes:
       - .:/load
+    networks: [load]
+
+  seed:
+    # La siembra y la comprobación de la galería 1:N (seed.py). La imagen de
+    # `fr`, que ya construye most.py: trae pymongo y las clases de persistencia
+    # del servicio. En los vCPU de k6, no en los de `fr`.
+    image: fr-commercial:load
+    pull_policy: never
+    cpuset: "0-1"
+    profiles: [tools]
+    entrypoint: ["python", "/load/seed.py"]
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/fr-load
+      PYTHONPATH: /app
+    volumes:
+      - .:/load:ro
     networks: [load]
 
 networks:
