@@ -19,12 +19,15 @@ from pydantic.json_schema import SkipJsonSchema
 
 from src.main import create_app
 from src.models.gallery import Gallery
-from tests.contract.harness import IMPLEMENTED
-from tests.contract.shape import CannotCompare, compare_operation
+from src.models.identity import Identity
+from src.models.recognition import SearchResult
+from tests.contract.harness import IMPLEMENTED, SPEC
+from tests.contract.shape import CannotCompare, compare_operation, normalize
 from tests.support.settings import settings
 
 LIST = "/v1/fr/commercial/galleries"
 ONE = "/v1/fr/commercial/galleries/{galleryId}"
+SEARCH = "/v1/fr/commercial/galleries/{galleryId}/search"
 WEBHOOK = "/v1/fr/commercial/webhooks/{webhookId}"
 
 
@@ -60,6 +63,21 @@ def get_gallery_with(model) -> dict:
     return app.openapi()
 
 
+def search_with(model) -> dict:
+    """`searchGallery` con ese modelo de respuesta. Sin cuerpo de petición: los
+    controles son de la respuesta, y el cuerpo se deja fuera con su motivo."""
+    app = FastAPI()
+
+    @app.post(SEARCH, response_model=model)
+    def search(galleryId: str):  # noqa: N803
+        return {}
+
+    return app.openapi()
+
+
+ONLY_THE_RESPONSE = "control: solo la respuesta"
+
+
 # ------------------------------------------------------------ el servicio real
 
 
@@ -67,8 +85,9 @@ def get_gallery_with(model) -> dict:
 #: cabecera de `shape.py`.
 MULTIPART = (
     "multipart: el cierre del cuerpo lo prueban peticiones con una parte de más "
-    "(test_inference.py, test_create_identity.py, test_add_face.py); la "
-    "comparación no traduce `contentMediaType`"
+    "(test_inference.py, test_create_identity.py, test_add_face.py, "
+    "test_verify_identity.py, test_search_gallery.py); la comparación no traduce "
+    "`contentMediaType`"
 )
 #: Decidido en #35: los cuerpos JSON de F3 tampoco se comparan, ni el de F4. Las
 #: cotas del cuerpo (`maxLength`, `minLength`, `required`, el cierre, el `null`)
@@ -87,6 +106,8 @@ WITHOUT_BODY = {
     ("post", "/v1/fr/commercial/galleries/{galleryId}/identities"): MULTIPART,
     ("post", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces"): MULTIPART,
     ("patch", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}"): JSON_BODY,
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/verify"): MULTIPART,
+    ("post", "/v1/fr/commercial/galleries/{galleryId}/search"): MULTIPART,
 }
 
 
@@ -145,6 +166,58 @@ def test_control_a_response_model_that_lets_extra_fields_through_is_red():
     assert compare_operation(get_gallery_with(Allow), "get", ONE) == [
         "200 application/json $ [additionalProperties]: código=True contrato=False"
     ]
+
+
+# «X o nulo» en 3.0.3: `anyOf: [X, NullValue]` frente al `anyOf: [X, {type: null}]`
+# de FastAPI. La `identity` de `searchGallery`, obligatoria y anulable (#40).
+
+
+def test_control_identity_required_and_nullable_as_the_contract():
+    assert (
+        compare_operation(search_with(SearchResult), "post", SEARCH, without_body=ONLY_THE_RESPONSE)
+        == []
+    )
+
+
+def test_control_identity_with_a_default_is_red():
+    # Con valor por omisión FastAPI la publica como opcional: la ausencia sería
+    # una tercera forma de decir «sin coincidencia», que el contrato prohíbe.
+    class Optional(SearchResult):
+        identity: Identity | None = None
+
+    assert compare_operation(
+        search_with(Optional), "post", SEARCH, without_body=ONLY_THE_RESPONSE
+    ) == ["200 application/json $ [required]: código=None contrato=['identity']"]
+
+
+def test_control_an_identity_left_open_is_red():
+    class OpenIdentity(Identity):
+        model_config = ConfigDict(extra="ignore")
+
+    class WithOpenIdentity(SearchResult):
+        identity: OpenIdentity | None
+
+    assert compare_operation(
+        search_with(WithOpenIdentity), "post", SEARCH, without_body=ONLY_THE_RESPONSE
+    ) == ["200 application/json $.identity [additionalProperties]: código=None contrato=False"]
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        [{"type": "string"}, {"type": "integer"}],
+        [{"type": "string"}, {"type": "string", "nullable": True, "enum": ["x"]}],
+        [{"type": "string"}, {"type": "string", "nullable": True}],
+        [{"$ref": "#/components/schemas/NullValue"}, {"$ref": "#/components/schemas/NullValue"}],
+        [{"type": "string"}, {"type": "integer"}, {"$ref": "#/components/schemas/NullValue"}],
+    ],
+    ids=["sin nulo", "enum que no es null", "nullable sin enum", "solo nulos", "tres miembros"],
+)
+def test_the_normalizer_refuses_an_anyOf_that_is_not_x_or_null(members):
+    # Solo `[X, NullValue]` es «X, anulable». NullValue se reconoce por su FORMA
+    # (`type` + `nullable` + `enum: [null]`), no por su nombre.
+    with pytest.raises(CannotCompare, match="composición que no sé comparar"):
+        normalize({"anyOf": members}, SPEC, True)
 
 
 # ------------------------------------------------------ el normalizador se niega

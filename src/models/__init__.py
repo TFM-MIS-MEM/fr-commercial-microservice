@@ -11,10 +11,11 @@ cuerpo.
 LO QUE ESTÁ PROBADO Y LO QUE ES OBLIGACIÓN. El `400` por campo de más está
 probado en cuerpos JSON (`tests/contract/test_rejections.py`), desde F5 (#37) en
 los tres cuerpos `multipart/form-data` de la inferencia sin estado
-(`tests/contract/test_inference.py`) y desde F4 (#36) en los de `createIdentity`
-y `addFace` (`test_create_identity.py`, `test_add_face.py`). En los otros tres
-es una obligación del contrato, que vigila `tests/contract/test_closure.py` y
-que cumple quien implemente F8 y F12.
+(`tests/contract/test_inference.py`), desde F4 (#36) en los de `createIdentity`
+y `addFace` (`test_create_identity.py`, `test_add_face.py`) y desde F8 (#40) en
+los de `verifyAgainstIdentity` y `searchGallery` (`test_verify_identity.py`,
+`test_search_gallery.py`). En el que queda es una obligación del contrato, que
+vigila `tests/contract/test_closure.py` y que cumple quien implemente F12.
 Medido en #103 con FastAPI 0.141.1 y Starlette 1.7.0:
 
   - Parámetros `Form()` y `File()` sueltos: una parte de más, de texto o de

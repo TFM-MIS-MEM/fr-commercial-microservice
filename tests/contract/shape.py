@@ -38,11 +38,17 @@ openapi-core. Desde docs#103 el contrato ya no tiene ningún `nullable` sin
 `type` al lado (lo vigila `test_closure.py`), pero la lectura se queda: es la
 correcta, y la otra daría por iguales dos esquemas distintos.
 
-Dos composiciones del contrato que esta traducción NO sabe comparar y ante las
-que se niega: el cierre de `WebhookEndpoint` (`allOf` más nombres y
-`additionalProperties`) y el «X o nulo» de 3.0.3 (`anyOf: [X, NullValue]`).
-Ninguna operación implementada las usa; la primera que lo haga tendrá que
-enseñárselo.
+EL «X O NULO» DE 3.0.3, desde F8 (#40). `anyOf: [X, NullValue]` es «X,
+anulable», lo mismo que el normalizador ya produce en el lado 3.1 a partir del
+`anyOf: [X, {type: null}]` de FastAPI. `NullValue` se reconoce por su FORMA,
+no por su nombre: `type` + `nullable: true` + `enum: [null]`. Cualquier otro
+`anyOf` se sigue negando: dos miembros no nulos, uno que se parece a
+`NullValue` sin serlo, dos nulos o tres miembros (`test_shape.py`).
+
+Una composición del contrato que esta traducción NO sabe comparar y ante la que
+se niega: el cierre de `WebhookEndpoint` (`allOf` más nombres y
+`additionalProperties`). Ninguna operación implementada la usa; la primera que
+lo haga tendrá que enseñárselo.
 """
 
 from tests.contract.harness import SPEC
@@ -91,7 +97,7 @@ def normalize(schema: dict, spec: dict, oas30: bool, where: str = "$") -> dict:
         if len(s) > 1:
             raise CannotCompare(f"{where}: $ref con hermanos {sorted(set(s) - {'$ref'})}")
         return normalize(_deref(spec, s), spec, oas30, where)
-    nullable, wrapped = (_nullability_30 if oas30 else _nullability_31)(s, where)
+    nullable, wrapped = (_nullability_30 if oas30 else _nullability_31)(s, spec, where)
     if wrapped is not None:
         inner = normalize(wrapped, spec, oas30, where)
         return {**inner, "nullable": True} if nullable else inner
@@ -103,17 +109,31 @@ def normalize(schema: dict, spec: dict, oas30: bool, where: str = "$") -> dict:
     return out
 
 
-def _nullability_30(s: dict, where: str) -> tuple[bool, dict | None]:
-    """3.0.3: `nullable` solo actúa con `type` en el MISMO objeto, y un `allOf` de
+def _is_null_value(spec: dict, member: dict) -> bool:
+    """La forma de `NullValue`: admite solo `null` (`type` + `nullable` + `enum: [null]`)."""
+    node = {k: v for k, v in _deref(spec, member).items() if k not in DOC_ONLY}
+    return (
+        set(node) == {"type", "nullable", "enum"}
+        and node["nullable"] is True
+        and node["enum"] == [None]
+    )
+
+
+def _nullability_30(s: dict, spec: dict, where: str) -> tuple[bool, dict | None]:
+    """3.0.3: `nullable` solo actúa con `type` en el MISMO objeto; un `allOf` de
     un solo miembro es un envoltorio (la forma de poner `description` junto a un
-    `$ref`)."""
+    `$ref`); y `anyOf: [X, NullValue]` es «X, anulable»."""
     nullable = bool(s.pop("nullable", False) and "type" in s)
     if list(s) == ["allOf"] and len(s["allOf"]) == 1:
         return nullable, s["allOf"][0]
+    if list(s) == ["anyOf"] and len(s["anyOf"]) == 2:
+        rest = [m for m in s["anyOf"] if not _is_null_value(spec, m)]
+        if len(rest) == 1:
+            return True, rest[0]
     return nullable, None
 
 
-def _nullability_31(s: dict, where: str) -> tuple[bool, dict | None]:
+def _nullability_31(s: dict, spec: dict, where: str) -> tuple[bool, dict | None]:
     """3.1: FastAPI escribe «X o nulo» como `anyOf: [X, {type: null}]`."""
     if "anyOf" not in s:
         return False, None

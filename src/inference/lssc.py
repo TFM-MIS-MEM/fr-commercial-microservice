@@ -74,6 +74,21 @@ def hamming(a: bytes, b: bytes) -> int:
     return int(np.bitwise_count(xor).sum())
 
 
+def hamming_many(probe: bytes, codes: list[bytes]) -> np.ndarray:
+    """La distancia de `probe` a cada código, de una vez: la búsqueda 1:N (F8).
+
+    Vectorizada, sin bucle en Python: los códigos se juntan en una matriz de
+    n × 24 palabras de 64 bits (192 B por fila), y el XOR y `bitwise_count`
+    recorren 24 elementos por rostro en lugar de 192. El orden de bytes de la
+    palabra no importa: se cuentan bits distintos, no se interpreta el número.
+    """
+    if not codes:
+        return np.zeros(0, dtype=np.int64)
+    matrix = np.frombuffer(b"".join(codes), dtype=np.uint64).reshape(len(codes), -1)
+    xor = np.bitwise_xor(matrix, np.frombuffer(probe, dtype=np.uint64))
+    return np.bitwise_count(xor).sum(axis=1, dtype=np.int64)
+
+
 def confidence(distance: int) -> float:
     return 1 - distance / CODE_BITS
 

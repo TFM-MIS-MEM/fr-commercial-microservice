@@ -699,6 +699,29 @@ paths:
         A diferencia de `/v1/fr/commercial/verification`, no requiere aportar las dos imágenes:
         la referencia ya está enrolada.
 
+        **Comparación.** De la imagen se toma el rostro de mayor confianza y se
+        extrae su vector con el modelo **de la galería**. Su código LSSC se
+        compara por distancia de Hamming con el de **cada** rostro de la
+        identidad, y cuenta la **menor**: `confidence = 1 − d_min/1536`, e
+        `isTheSame` es `confidence ≥ threshold`. Es el mismo comparador que
+        `verifyPair`. Sin `threshold`, se aplica el del modelo de la galería
+        (los valores, en `verifyPair`); `thresholdUsed` devuelve el aplicado, y
+        `model`, el de la galería con su versión. Cada rostro añadido es una
+        oportunidad más de coincidir: la tasa de falsa aceptación crece con el
+        número de rostros de la identidad.
+
+        **Una identidad sin rostros es `404`.** Solo puede ser el residuo de un
+        `createIdentity` que falló después de crearla, y cuyo cliente recibió
+        un error: para él no existe. Que `getIdentity` la muestre es cosa de la
+        reconciliación.
+
+        **Solo con imágenes, por ahora.** `embedding` y `embeddingToken` se
+        rechazan con `400` `EMBEDDING_INPUT_NOT_SUPPORTED` mientras no se
+        verifique el token de procedencia, y `livenessToken` con `400`
+        `LIVENESS_NOT_SUPPORTED` mientras no exista la prueba de vida:
+        aceptarlo sin comprobarlo sería dar por superada una prueba que nadie
+        ha hecho.
+
         **Patrón:** RETRIEVAL OPERATION. Aunque incorpora una inferencia, su
         resultado depende del estado almacenado; las operaciones de inferencia
         sin acceso a estado se clasifican como COMPUTATION FUNCTION.
@@ -746,7 +769,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/VerificationResult'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Petición mal formada (`BAD_REQUEST`); imagen que no se puede
+            decodificar (`INVALID_IMAGE`); o imagen de más de 4096 píxeles de
+            ancho o de alto (`IMAGE_TOO_LARGE`), comprobado con las dimensiones
+            de su cabecera antes de decodificarla.
+
+            Además: falta `image` (`BAD_REQUEST`); la imagen no contiene
+            rostros (`NO_FACE_DETECTED`); la petición aporta vectores
+            (`EMBEDDING_INPUT_NOT_SUPPORTED`); o aporta `livenessToken`
+            (`LIVENESS_NOT_SUPPORTED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -776,6 +812,22 @@ paths:
 
         Se emplea `POST` por el tamaño del contenido transmitido y no por su
         semántica: la operación no modifica estado.
+
+        **Comparación.** De la imagen se toma el rostro de mayor confianza y se
+        extrae su vector con el modelo **de la galería**. Su código LSSC se
+        compara por distancia de Hamming con **todos** los rostros de la
+        galería, y gana el más cercano; a igual distancia, el de menor
+        identificador, para que el resultado sea determinista. Hay coincidencia
+        si `1 − d/1536 ≥ threshold`, con el umbral del modelo de la galería si
+        no se indica (los valores, en `verifyPair`).
+
+        **`confidence` solo sale con coincidencia**, y es la del rostro
+        ganador. Sin coincidencia no se emite: sin identidad, no hay de quién
+        sea esa confianza.
+
+        **Solo con imágenes, por ahora.** `embedding` y `embeddingToken` se
+        rechazan con `400` `EMBEDDING_INPUT_NOT_SUPPORTED` mientras no se
+        verifique el token de procedencia.
 
         **Patrón:** RETRIEVAL OPERATION.
         **Consumo:** `1 × peso_modelo + f(tamaño_galería)`.
@@ -825,8 +877,26 @@ paths:
                   confidence:
                     type: number
                     format: float
+                    minimum: 0
+                    maximum: 1
+                    description: |
+                      `1 − d/1536`, con `d` la distancia de Hamming entre el
+                      código LSSC de la imagen y el del rostro ganador. Solo
+                      con coincidencia.
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Petición mal formada (`BAD_REQUEST`); imagen que no se puede
+            decodificar (`INVALID_IMAGE`); o imagen de más de 4096 píxeles de
+            ancho o de alto (`IMAGE_TOO_LARGE`), comprobado con las dimensiones
+            de su cabecera antes de decodificarla.
+
+            Además: falta `image` (`BAD_REQUEST`); la imagen no contiene
+            rostros (`NO_FACE_DETECTED`); o la petición aporta vectores
+            (`EMBEDDING_INPUT_NOT_SUPPORTED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorReport'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
