@@ -175,6 +175,63 @@ claramente sobre la de la corrida a 1/s del mismo perfil, mientras la CPU de
 `fr` se queda por debajo de la que alcanzó en el MST de 5.000. La interpretación
 numérica es de `analyze.py`.
 
+### Resultado de la campaña 1:N (`results/campaign/`, lanzada desde `5f48e92`)
+
+| Rostros | MIT (/s) | MST (/s) | 1000/MST (ms) | Latencia a 1–2/s (ms) |
+|---|---|---|---|---|
+| 5.000 | 30,40 | 20,80 | 48,08 | 77,0 |
+| 20.000 | 20,00 | 16,15 | 61,92 | 94,5 |
+| 50.000 | 12,50 | 9,59 | 104,28 | 132,5 |
+
+Las tablas completas, con `python3 load/analyze.py campaign`.
+
+**El criterio, aplicado, no decide.** Se conserva tal como se escribió antes de
+medir. No fija cifra para «claramente», y el veredicto depende del umbral u de
+la subida de la lectura de mongo: a 50.000, MongoDB en 8 de 8 corridas que
+fallan para u ≤ ×1,28, en 4 de 8 a ×1,5 y en ninguna por encima de ×1,60. Su
+cláusula de CPU es falsa a 5.000 por construcción (la referencia, 2,094 vCPU,
+es su propio MST) y a 50.000 se cumple con un margen de 0,016 vCPU. Un criterio
+cuyo veredicto depende de un umbral que no fijó y de un margen de centésimas no
+sirve para atribuir el límite.
+
+**Por qué no lo limita MongoDB: una cota con lo medido.** En las MST confirmadas
+a 50.000, cada búsqueda hace ~4,05 lecturas, que suman 25,5–26,7 ms, y gasta
+24,9–26,0 ms de CPU de mongo por encima de su fondo. Con 8 búsquedas en vuelo,
+por tiempo de lectura, mongo serviría ~300–313 búsquedas/s; pero su CPU por
+búsqueda es casi igual a su tiempo de lectura (las lecturas son de CPU), así que
+la cota que vale es la de sus 2 vCPU: **~77–80 búsquedas/s, ocho veces el MST
+de 9,59/s**. En las corridas que fallan, la lectura sube de 4,74 ms a 6,08–7,56
+ms: +5–11 ms por búsqueda, frente a los 104 ms por búsqueda en capacidad. Su
+CPU no pasa de 0,43 vCPU (0,32 sin el fondo).
+
+**Qué apunta al límite.** De 5.000 a 50.000, 1000/MST sube 56,2 ms, lo mismo que
+la latencia aislada a 1 y 2/s (+56,5 y +54,6 ms); la pendiente en capacidad,
+1,27 µs por rostro, es igual a la de latencia, 1,24 µs: la parte de f(n) no se
+reparte entre las 8 inferencias en paralelo, se paga casi entera por búsqueda.
+Con el MST de 50.000 en el extremo alto de su error (10,62/s), el incremento de
+1000/MST sería de ~46 ms (46,1), el 83 % del de latencia a 1–2/s (82 % a 1/s,
+84 % a 2/s): la conclusión se mantiene, porque repartida entre las inferencias
+costaría una fracción mucho menor. Y la
+CPU de `fr` en las corridas que fallan baja con n (2,89 → 2,36 → 1,84 vCPU de
+media): el servicio se satura usando cada vez menos CPU. Las dos cosas apuntan a
+una parte en serie dentro del proceso de `fr`. Que sea el bucle de eventos o el
+GIL del único worker es una inferencia: confirmarlo exige medir con más
+workers, y queda como trabajo futuro.
+
+**La latencia a 4/s es más baja que a 1 y 2/s en los tres tamaños** (75,5, 85,3 y
+112,8 ms; a 5.000, 55 ms a 8/s). Por eso f(n) en latencia se toma de las
+corridas a 1 y 2/s. Hipótesis, no medida: con poca carga la CPU baja de
+frecuencia y la latencia la paga.
+
+**El swap del anfitrión** estuvo en ~4,2 GB durante toda la campaña 1:N (2,1 GB
+al empezar la de verifyPair, el 12/10), y no creció en ninguna corrida. La 020
+a 50.000 (10,09/s), que falló con 17 iteraciones descartadas, coincide con una
+liberación de 1,5 GB (4.201 → 2.703 MB). Es la segunda bajada de escalón de ese
+MST (la primera, de 10,62 a 10,09, la provocó la 017). Con dos bajadas, el error
+del procedimiento en esa celda llega a ~15 % (5 % de la bisección más 5 % por
+bajada), por encima del ~10 % declarado, que suponía una; el procedimiento
+admite hasta dos.
+
 ## Uso
 
 Precondiciones de la máquina: solo Docker, el editor y el chat abiertos;
@@ -250,11 +307,13 @@ lado, `.meta.json` guarda:
 
 `analyze.py` no lee esos veredictos: vuelve a evaluar cada resumen con
 `criteria.py`, y avisa si no coinciden. Además de MIT, MST y ráfaga, da por
-perfil σ_S y σ_I, el coste por petición (1000/MST), las bajadas de escalón de la
+perfil σ_S y σ_I (respecto a `detectFaces`), el coste por petición (1000/MST), las bajadas de escalón de la
 confirmación, las inválidas y el crecimiento del swap; la descomposición
 aproximada de `verifyPair` en dos detecciones más el resto; la distribución del
 cociente de medianas que sostiene el umbral; y las corridas con cociente por
-debajo de 0,8.
+debajo de 0,8. Con los perfiles 1:N, además: f(n) con su ajuste lineal, los
+recursos de cada corrida, el criterio de MongoDB en función del umbral y la cota
+de MongoDB.
 
 En los perfiles 1:N, junto a las corridas: `NNN-gallery-seed.json` (galería,
 identidad enrolada y tiempos de la siembra), `NNN-gallery-start.json` y
