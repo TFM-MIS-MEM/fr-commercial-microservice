@@ -1,0 +1,185 @@
+{
+ "kind": "mst",
+ "rate": 24.32,
+ "window": 600,
+ "slices": 3,
+ "profile": "searchGallery-xs-5000",
+ "target": "fr",
+ "config": {
+  "workers": 1,
+  "threads": 1,
+  "concurrency": 8
+ },
+ "attempt": 1,
+ "valid": true,
+ "invalid_reason": null,
+ "verdict": {
+  "pass": false,
+  "checks": {
+   "success": true,
+   "pending": true,
+   "latency": false
+  },
+  "rate": 24.32,
+  "window": 600,
+  "requests": 14593,
+  "success": 1,
+  "dropped": 0,
+  "inflight_max": 8,
+  "max_vus": 73,
+  "med_first": 80.69520800000001,
+  "med_last": 124.944,
+  "ratio": 1.5483447294664634
+ },
+ "started": "2026-10-18T21:29:41+00:00",
+ "finished": "2026-10-18T21:40:12+00:00",
+ "commit": "5f48e92ec9ebcdefe3b7b5b0c3113ea0ab559f52",
+ "worktree_dirty": false,
+ "images": [
+  "mongo:7.0@sha256:b6421fd6d1c5ded6377b397d8983e2f82e2100dc5123332dcfda2065a472be5b",
+  "fr-commercial:load",
+  "python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e",
+  "grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34",
+  "fr-commercial:load"
+ ],
+ "cpuset": {
+  "fr": "2-9",
+  "calib": "2-9",
+  "k6": "0-1",
+  "mongo": "0-1"
+ },
+ "host_before": {
+  "at": "2026-10-18T21:28:38+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "23:28  up 16 days, 11:14, 1 user, load averages: 4.77 3.81 3.67",
+  "swap_used_mb": 4248.69,
+  "other_containers": [],
+  "problems": [],
+  "skipped": false
+ },
+ "host_after": {
+  "at": "2026-10-18T21:40:12+00:00",
+  "ac_power": true,
+  "battery": "-InternalBattery-0 (id=7340131)\t80%; AC attached; not charging present: true",
+  "low_power_mode": 0,
+  "caffeinate": true,
+  "uptime": "23:40  up 16 days, 11:25, 1 user, load averages: 5.35 4.88 4.27",
+  "swap_used_mb": 4248.69,
+  "other_containers": []
+ },
+ "swap_growth_mb": 0.0,
+ "service_before": {
+  "container": "8d094bfd630b",
+  "image": "sha256:b03431ea6038b2d1eca769e7156fc3de1137ae15f64fe0d5654680c6e2391109",
+  "started_at": "2026-10-18T20:46:03.637673543Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false,
+  "processes": [
+   [
+    1,
+    0,
+    "/usr/local/bin/python3.11 /usr/local/bin/uvicorn --factory src.main:create_app --host 0.0.0.0 --port 8000"
+   ]
+  ],
+  "workers": [],
+  "oom_kill": 0,
+  "memory_peak_bytes": 1997144064,
+  "memory_current_bytes": 1948033024,
+  "cpu": {
+   "sampled_at": 1792358981.415,
+   "usage_usec": 3183507553,
+   "user_usec": 2609412606,
+   "system_usec": 574094947,
+   "nice_usec": 0,
+   "nr_periods": 0,
+   "nr_throttled": 0,
+   "throttled_usec": 0,
+   "nr_bursts": 0,
+   "burst_usec": 0
+  },
+  "mongo": {
+   "container": "54bd76704372",
+   "started_at": "2026-10-18T20:46:01.067288542Z",
+   "restart_count": 0,
+   "running": true,
+   "oom_killed": false,
+   "cpu": {
+    "sampled_at": 1792358981.515,
+    "usage_usec": 347727179,
+    "user_usec": 289115124,
+    "system_usec": 58612054,
+    "nice_usec": 0,
+    "nr_periods": 0,
+    "nr_throttled": 0,
+    "throttled_usec": 0,
+    "nr_bursts": 0,
+    "burst_usec": 0
+   },
+   "op_latencies_reads": {
+    "latency": 68719521,
+    "ops": 113397,
+    "queryableEncryptionLatencyMicros": 0
+   }
+  }
+ },
+ "service_after": {
+  "container": "8d094bfd630b",
+  "image": "sha256:b03431ea6038b2d1eca769e7156fc3de1137ae15f64fe0d5654680c6e2391109",
+  "started_at": "2026-10-18T20:46:03.637673543Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false,
+  "processes": [
+   [
+    1,
+    0,
+    "/usr/local/bin/python3.11 /usr/local/bin/uvicorn --factory src.main:create_app --host 0.0.0.0 --port 8000"
+   ]
+  ],
+  "workers": [],
+  "oom_kill": 0,
+  "memory_peak_bytes": 1997144064,
+  "memory_current_bytes": 1955385344,
+  "cpu": {
+   "sampled_at": 1792359612.369,
+   "usage_usec": 4910424558,
+   "user_usec": 4070190840,
+   "system_usec": 840233717,
+   "nice_usec": 0,
+   "nr_periods": 0,
+   "nr_throttled": 0,
+   "throttled_usec": 0,
+   "nr_bursts": 0,
+   "burst_usec": 0
+  },
+  "mongo": {
+   "container": "54bd76704372",
+   "started_at": "2026-10-18T20:46:01.067288542Z",
+   "restart_count": 0,
+   "running": true,
+   "oom_killed": false,
+   "cpu": {
+    "sampled_at": 1792359612.468,
+    "usage_usec": 484910330,
+    "user_usec": 407814392,
+    "system_usec": 77095938,
+    "nice_usec": 0,
+    "nr_periods": 0,
+    "nr_throttled": 0,
+    "throttled_usec": 0,
+    "nr_bursts": 0,
+    "burst_usec": 0
+   },
+   "op_latencies_reads": {
+    "latency": 120326568,
+    "ops": 173506,
+    "queryableEncryptionLatencyMicros": 0
+   }
+  }
+ },
+ "k6_stdout": "rate=24.32 reqs=14593 med=115ms"
+}

@@ -1,0 +1,85 @@
+{
+ "ok": true,
+ "problems": [],
+ "counts": {
+  "faces": 20000,
+  "identities": 20000,
+  "identities_faceCount_not_1": 0,
+  "gallery_faceCount": 20000,
+  "gallery_identityCount": 20000,
+  "gallery_status": "active",
+  "gallery_model": "xs"
+ },
+ "shape": {
+  "enrolled_keys": [
+   "_id",
+   "identityId",
+   "galleryId",
+   "embedding",
+   "isBinarized",
+   "source",
+   "createdAt"
+  ],
+  "seeded_keys": [
+   "_id",
+   "identityId",
+   "galleryId",
+   "embedding",
+   "isBinarized",
+   "source",
+   "createdAt"
+  ],
+  "enrolled_fast_path": true,
+  "seeded_fast_path": true
+ },
+ "search": {
+  "status": 200,
+  "ms": 83,
+  "body": {
+   "identity": {
+    "id": "6ad555715fc27fbdc324c088",
+    "galleryId": "6ad555715fc27fbdc324c087",
+    "fullName": "koch-2023",
+    "faceCount": 1,
+    "createdAt": "2026-10-18T23:25:37.233000Z"
+   },
+   "confidence": 0.7122395833333333
+  }
+ },
+ "at": "2026-10-19T01:53:33+00:00",
+ "seed": {
+  "gallery": "6ad555715fc27fbdc324c087",
+  "identity": "6ad555715fc27fbdc324c088",
+  "faces": 20000,
+  "seconds": {
+   "api": 0.06,
+   "mongo": 0.35,
+   "total": 0.42
+  },
+  "wall_s": 1.11
+ },
+ "mongo": {
+  "container": "4b1355e21928",
+  "started_at": "2026-10-18T23:25:30.990353333Z",
+  "restart_count": 0,
+  "running": true,
+  "oom_killed": false,
+  "cpu": {
+   "sampled_at": 1792374813.707,
+   "usage_usec": 2415889133,
+   "user_usec": 2152198664,
+   "system_usec": 263690468,
+   "nice_usec": 0,
+   "nr_periods": 0,
+   "nr_throttled": 0,
+   "throttled_usec": 0,
+   "nr_bursts": 0,
+   "burst_usec": 0
+  },
+  "op_latencies_reads": {
+   "latency": 1347794631,
+   "ops": 456019,
+   "queryableEncryptionLatencyMicros": 0
+  }
+ }
+}

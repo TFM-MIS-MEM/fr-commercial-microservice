@@ -1,0 +1,60 @@
+{
+ "state": "finished",
+ "started": "2026-10-18T20:45:59+00:00",
+ "stage": null,
+ "reason": null,
+ "profiles": {
+  "searchGallery-xs-5000": {
+   "valid": true,
+   "mit": 30.4,
+   "mst": 20.8,
+   "gallery": {
+    "gallery": "6ad53011323a2c845dd701d1",
+    "identity": "6ad53011323a2c845dd701d2",
+    "faces": 5000,
+    "seconds": {
+     "api": 0.07,
+     "mongo": 0.08,
+     "total": 0.15
+    },
+    "wall_s": 1.17,
+    "end_ok": true
+   }
+  },
+  "searchGallery-xs-20000": {
+   "valid": true,
+   "mit": 20.0,
+   "mst": 16.15,
+   "gallery": {
+    "gallery": "6ad555715fc27fbdc324c087",
+    "identity": "6ad555715fc27fbdc324c088",
+    "faces": 20000,
+    "seconds": {
+     "api": 0.06,
+     "mongo": 0.35,
+     "total": 0.42
+    },
+    "wall_s": 1.11,
+    "end_ok": true
+   }
+  },
+  "searchGallery-xs-50000": {
+   "valid": true,
+   "mit": 12.5,
+   "mst": 9.59,
+   "gallery": {
+    "gallery": "6ad57825f4a95756d3055fe8",
+    "identity": "6ad57825f4a95756d3055fe9",
+    "faces": 50000,
+    "seconds": {
+     "api": 0.07,
+     "mongo": 0.87,
+     "total": 0.94
+    },
+    "wall_s": 1.68,
+    "end_ok": true
+   }
+  }
+ },
+ "updated": "2026-10-19T04:43:26+00:00"
+}

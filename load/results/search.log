@@ -1,0 +1,90 @@
+2026-10-18T20:45:59+00:00 · searchGallery-xs-5000 · w1t1c8 · arrancando
+2026-10-18T20:46:09+00:00 · galería de 5000 sembrada en 1.17 s · {'gallery': '6ad53011323a2c845dd701d1', 'identity': '6ad53011323a2c845dd701d2', 'faces': 5000, 'seconds': {'api': 0.07, 'mongo': 0.08, 'total': 0.15}, 'wall_s': 1.17}
+2026-10-18T20:46:11+00:00 · comprobación de la galería: bien
+001-mit-1.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 1/10 · mediana 77→77 ms (×1.00)
+002-mit-2.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/10 · mediana 79→77 ms (×0.97)
+003-mit-4.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 1/12 · mediana 75→76 ms (×1.00) · swap -8 MB
+004-mit-8.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/24 · mediana 59→55 ms (×0.92)
+005-mit-16.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 3/48 · mediana 58→58 ms (×1.00)
+006-mit-32.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 9/96 · mediana 94→100 ms (×1.06)
+007-mit-64.00: no pasa · éxito 1.000 · descartadas 2117 · en vuelo 268/192 · mediana 6712→6812 ms (×1.01)
+008-mit-48.00: no pasa · éxito 1.000 · descartadas 1148 · en vuelo 144/144 · mediana 5078→5235 ms (×1.03) · swap -16 MB
+009-mit-40.00: no pasa · éxito 1.000 · descartadas 678 · en vuelo 120/120 · mediana 4155→4382 ms (×1.05) · swap -8 MB
+010-mit-36.00: no pasa · éxito 1.000 · descartadas 441 · en vuelo 108/108 · mediana 3714→3932 ms (×1.06)
+011-mit-34.00: no pasa · éxito 1.000 · descartadas 342 · en vuelo 102/102 · mediana 3507→3745 ms (×1.07)
+012-mit-33.00: no pasa · éxito 1.000 · descartadas 224 · en vuelo 99/99 · mediana 186→3612 ms (×19.43)
+013-mit-32.00: no pasa · éxito 1.000 · descartadas 119 · en vuelo 96/96 · mediana 98→3520 ms (×35.78) · swap -8 MB
+014-mit-30.40: pasa · éxito 1.000 · descartadas 0 · en vuelo 9/92 · mediana 85→99 ms (×1.16)
+015-mit-30.40: pasa · éxito 1.000 · descartadas 0 · en vuelo 8/92 · mediana 85→104 ms (×1.22) · swap -8 MB
+016-mit-30.40: pasa · éxito 1.000 · descartadas 0 · en vuelo 9/92 · mediana 86→102 ms (×1.19)
+MIT = 30.4/s
+017-mst-24.32: no pasa · éxito 1.000 · descartadas 0 · en vuelo 8/73 · mediana 81→125 ms (×1.55)
+018-mst-19.46: pasa · éxito 1.000 · descartadas 0 · en vuelo 4/59 · mediana 67→79 ms (×1.17)
+019-mst-21.89: pasa · éxito 1.000 · descartadas 0 · en vuelo 7/66 · mediana 78→94 ms (×1.21)
+020-mst-23.11: no pasa · éxito 1.000 · descartadas 696 · en vuelo 70/70 · mediana 80→3271 ms (×40.89)
+021-mst-22.50: no pasa · éxito 1.000 · descartadas 246 · en vuelo 68/68 · mediana 94→3143 ms (×33.51) · swap -8 MB
+022-mst-21.89: pasa · éxito 1.000 · descartadas 0 · en vuelo 6/66 · mediana 78→96 ms (×1.23)
+023-mst-21.89: no pasa · éxito 1.000 · descartadas 67 · en vuelo 66/66 · mediana 78→2864 ms (×36.53)
+024-mst-20.80: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/63 · mediana 71→80 ms (×1.13)
+025-mst-20.80: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/63 · mediana 76→87 ms (×1.15)
+026-mst-20.80: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/63 · mediana 75→87 ms (×1.16)
+MST = 20.8/s · ráfaga = 1.462
+2026-10-18T23:25:29+00:00 · comprobación de la galería: bien
+2026-10-18T23:25:30+00:00 · searchGallery-xs-20000 · w1t1c8 · arrancando
+2026-10-18T23:25:37+00:00 · galería de 20000 sembrada en 1.11 s · {'gallery': '6ad555715fc27fbdc324c087', 'identity': '6ad555715fc27fbdc324c088', 'faces': 20000, 'seconds': {'api': 0.06, 'mongo': 0.35, 'total': 0.42}, 'wall_s': 1.11}
+2026-10-18T23:25:39+00:00 · comprobación de la galería: bien
+001-mit-1.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/10 · mediana 99→95 ms (×0.95)
+002-mit-2.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/10 · mediana 103→94 ms (×0.92)
+003-mit-4.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/12 · mediana 88→85 ms (×0.97)
+004-mit-8.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/24 · mediana 74→73 ms (×0.99)
+005-mit-16.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 4/48 · mediana 107→107 ms (×1.00)
+006-mit-32.00: no pasa · éxito 1.000 · descartadas 721 · en vuelo 96/96 · mediana 4741→4973 ms (×1.05)
+007-mit-24.00: no pasa · éxito 1.000 · descartadas 250 · en vuelo 72/72 · mediana 3517→3805 ms (×1.08)
+008-mit-20.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/60 · mediana 144→165 ms (×1.14)
+009-mit-22.00: no pasa · éxito 1.000 · descartadas 135 · en vuelo 66/66 · mediana 2006→3466 ms (×1.73)
+010-mit-21.00: no pasa · éxito 1.000 · descartadas 0 · en vuelo 56/63 · mediana 172→807 ms (×4.70)
+011-mit-20.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/60 · mediana 149→165 ms (×1.11)
+012-mit-20.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/60 · mediana 144→162 ms (×1.13)
+MIT = 20.0/s
+013-mst-16.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 4/48 · mediana 108→137 ms (×1.26) · swap -16 MB
+014-mst-20.00: no pasa · éxito 1.000 · descartadas 2357 · en vuelo 60/60 · mediana 221→3894 ms (×17.64)
+015-mst-18.00: no pasa · éxito 1.000 · descartadas 1271 · en vuelo 54/54 · mediana 157→3465 ms (×22.12)
+016-mst-17.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/51 · mediana 142→189 ms (×1.33)
+017-mst-17.50: no pasa · éxito 1.000 · descartadas 948 · en vuelo 53/53 · mediana 148→3378 ms (×22.81) · swap -8 MB
+018-mst-17.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 6/51 · mediana 144→201 ms (×1.40)
+019-mst-17.00: no pasa · éxito 1.000 · descartadas 726 · en vuelo 51/51 · mediana 143→3222 ms (×22.56)
+020-mst-16.15: pasa · éxito 1.000 · descartadas 0 · en vuelo 8/49 · mediana 133→157 ms (×1.18)
+021-mst-16.15: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/49 · mediana 131→154 ms (×1.17)
+022-mst-16.15: pasa · éxito 1.000 · descartadas 0 · en vuelo 5/49 · mediana 129→155 ms (×1.20)
+MST = 16.15/s · ráfaga = 1.238
+2026-10-19T01:53:33+00:00 · comprobación de la galería: bien
+2026-10-19T01:53:34+00:00 · searchGallery-xs-50000 · w1t1c8 · arrancando
+2026-10-19T01:53:42+00:00 · galería de 50000 sembrada en 1.68 s · {'gallery': '6ad57825f4a95756d3055fe8', 'identity': '6ad57825f4a95756d3055fe9', 'faces': 50000, 'seconds': {'api': 0.07, 'mongo': 0.87, 'total': 0.94}, 'wall_s': 1.68}
+2026-10-19T01:53:44+00:00 · comprobación de la galería: bien
+001-mit-1.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/10 · mediana 135→124 ms (×0.92)
+002-mit-2.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/10 · mediana 134→126 ms (×0.94)
+003-mit-4.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/12 · mediana 118→112 ms (×0.96)
+004-mit-8.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 2/24 · mediana 155→159 ms (×1.03)
+005-mit-16.00: no pasa · éxito 1.000 · descartadas 191 · en vuelo 48/48 · mediana 3654→3831 ms (×1.05)
+006-mit-12.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 7/36 · mediana 272→289 ms (×1.07)
+007-mit-14.00: no pasa · éxito 1.000 · descartadas 76 · en vuelo 42/42 · mediana 2521→3322 ms (×1.32)
+008-mit-13.00: no pasa · éxito 1.000 · descartadas 16 · en vuelo 39/39 · mediana 421→3049 ms (×7.24)
+009-mit-12.50: pasa · éxito 1.000 · descartadas 0 · en vuelo 7/38 · mediana 316→375 ms (×1.19)
+010-mit-12.50: pasa · éxito 1.000 · descartadas 0 · en vuelo 8/38 · mediana 312→378 ms (×1.21)
+011-mit-12.50: pasa · éxito 1.000 · descartadas 0 · en vuelo 8/38 · mediana 331→389 ms (×1.18)
+MIT = 12.5/s
+012-mst-10.00: pasa · éxito 1.000 · descartadas 0 · en vuelo 4/30 · mediana 189→215 ms (×1.14)
+013-mst-12.50: no pasa · éxito 1.000 · descartadas 990 · en vuelo 38/38 · mediana 2953→3535 ms (×1.20)
+014-mst-11.25: no pasa · éxito 1.000 · descartadas 330 · en vuelo 34/34 · mediana 260→3142 ms (×12.11)
+015-mst-10.62: pasa · éxito 1.000 · descartadas 0 · en vuelo 12/32 · mediana 230→297 ms (×1.29) · swap -8 MB
+016-mst-10.93: no pasa · éxito 1.000 · descartadas 0 · en vuelo 7/33 · mediana 239→361 ms (×1.51)
+017-mst-10.62: no pasa · éxito 1.000 · descartadas 77 · en vuelo 32/32 · mediana 224→2874 ms (×12.84)
+018-mst-10.09: pasa · éxito 1.000 · descartadas 0 · en vuelo 13/31 · mediana 191→241 ms (×1.26)
+019-mst-10.09: pasa · éxito 1.000 · descartadas 0 · en vuelo 6/31 · mediana 193→242 ms (×1.25)
+020-mst-10.09: no pasa · éxito 1.000 · descartadas 17 · en vuelo 31/31 · mediana 191→285 ms (×1.50) · swap -1498 MB
+021-mst-9.59: pasa · éxito 1.000 · descartadas 0 · en vuelo 6/29 · mediana 188→200 ms (×1.06)
+022-mst-9.59: pasa · éxito 1.000 · descartadas 0 · en vuelo 6/29 · mediana 188→197 ms (×1.05)
+023-mst-9.59: pasa · éxito 1.000 · descartadas 0 · en vuelo 4/29 · mediana 189→197 ms (×1.04)
+MST = 9.59/s · ráfaga = 1.303
+2026-10-19T04:43:25+00:00 · comprobación de la galería: bien
+2026-10-19T04:43:26+00:00 · 1:N: finished
