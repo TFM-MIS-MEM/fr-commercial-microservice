@@ -207,7 +207,11 @@ CPU no pasa de 0,43 vCPU (0,32 sin el fondo).
 **Qué apunta al límite.** De 5.000 a 50.000, 1000/MST sube 56,2 ms, lo mismo que
 la latencia aislada a 1 y 2/s (+56,5 y +54,6 ms); la pendiente en capacidad,
 1,27 µs por rostro, es igual a la de latencia, 1,24 µs: la parte de f(n) no se
-reparte entre las 8 inferencias en paralelo, se paga entera por búsqueda. Y la
+reparte entre las 8 inferencias en paralelo, se paga casi entera por búsqueda.
+Con el MST de 50.000 en el extremo alto de su error (10,62/s), el incremento de
+1000/MST sería de ~46 ms (46,1), el 83 % del de latencia a 1–2/s (82 % a 1/s,
+84 % a 2/s): la conclusión se mantiene, porque repartida entre las inferencias
+costaría una fracción mucho menor. Y la
 CPU de `fr` en las corridas que fallan baja con n (2,89 → 2,36 → 1,84 vCPU de
 media): el servicio se satura usando cada vez menos CPU. Las dos cosas apuntan a
 una parte en serie dentro del proceso de `fr`. Que sea el bucle de eventos o el
@@ -222,8 +226,11 @@ frecuencia y la latencia la paga.
 **El swap del anfitrión** estuvo en ~4,2 GB durante toda la campaña 1:N (2,1 GB
 al empezar la de verifyPair, el 12/10), y no creció en ninguna corrida. La 020
 a 50.000 (10,09/s), que falló con 17 iteraciones descartadas, coincide con una
-liberación de 1,5 GB (4.201 → 2.703 MB). La bajada de escalón que provocó, de
-10,09 a 9,59 (5 %), cae dentro del error declarado del procedimiento (~10 %).
+liberación de 1,5 GB (4.201 → 2.703 MB). Es la segunda bajada de escalón de ese
+MST (la primera, de 10,62 a 10,09, la provocó la 017). Con dos bajadas, el error
+del procedimiento en esa celda llega a ~15 % (5 % de la bisección más 5 % por
+bajada), por encima del ~10 % declarado, que suponía una; el procedimiento
+admite hasta dos.
 
 ## Uso
 
