@@ -252,12 +252,12 @@ python3 load/most.py most --serie exploration --only mst --mit 12.5 --no-confirm
     --workers 4 --threads 1 --concurrency 1
 
 # Deriva: 15 min a ~90 % del MIT de la configuración elegida, en tramos de un minuto.
-python3 load/most.py drift --serie drift --rate 11.2 --window 900 --slices 15 \
-    --workers 4 --threads 1 --concurrency 1
+python3 load/most.py drift --serie drift --rate 15.75 --window 900 --slices 15 \
+    --workers 1 --threads 1 --concurrency 8
 
 # Un perfil completo.
 python3 load/most.py most --serie campaign --op verifyPair --model xs \
-    --workers 4 --threads 1 --concurrency 1
+    --workers 1 --threads 1 --concurrency 8
 
 python3 load/analyze.py
 ```

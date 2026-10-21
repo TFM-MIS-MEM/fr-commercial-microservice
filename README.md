@@ -7,8 +7,23 @@ TFM. Python 3.11, FastAPI y MongoDB.
   operaciones. Es la fuente de verdad: si el código y el contrato discrepan, se
   corrige el código. `/docs` y `/openapi.json` se sirven **desde ese fichero**, no
   desde el código.
-- **Estado:** implementadas `getGallery` (TFM-MIS-MEM/docs#33) y la inferencia
-  sin estado: `detectFaces`, `verifyPair` y `extractEmbedding` (docs#37).
+- **Estado:** 17 de las 27 operaciones implementadas.
+  - Galerías, las cinco (F3, TFM-MIS-MEM/docs#35).
+  - Identidades y rostros, las siete (F4, docs#36).
+  - Inferencia sin estado: `detectFaces`, `verifyPair` y `extractEmbedding`
+    (F5, docs#37).
+  - Verificación contra identidad y búsqueda 1:N: `verifyAgainstIdentity` y
+    `searchGallery` (F8, docs#40).
+  - Embeddings guardados binarizados con LSSC (F6, docs#38).
+  - **Pendiente:** el token de procedencia (F7, docs#39) ---hasta entonces, las
+    entradas por vector responden `400 EMBEDDING_INPUT_NOT_SUPPORTED`---, las
+    unidades de consumo (F9), los límites del plan (F10), los tokens de
+    enrolamiento (F11), la prueba de vida (F12) y los puntos de notificación
+    (F13).
+  - Alcanzable a través de la pasarela en `/v1/fr/commercial`, con los dos
+    canales (TFM-MIS-MEM/api-gateway#3).
+- **Medición de capacidad:** el instrumento de carga y los resultados de la
+  campaña viven en [`load/`](load/README.md) (docs#120, docs#62).
 
 ## Lo que hay que saber antes de tocarlo
 
