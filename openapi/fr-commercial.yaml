@@ -774,8 +774,9 @@ paths:
                   description: |
                     Acredita haber superado la prueba de vida. Vincula ambas
                     operaciones, impidiendo que un sujeto supere la prueba y
-                    otro distinto complete la verificación. Requiere el
-                    complemento de prueba de vida.
+                    otro distinto complete la verificación. Fuera de la
+                    tarifa: no disponible hasta su implementación
+                    (TFM-MIS-MEM/docs#44).
       responses:
         '200':
           description: Resultado de la verificación
@@ -1227,7 +1228,8 @@ paths:
         control de seguridad: si la eligiera el cliente, bastaría con grabar un
         vídeo una vez y reutilizarlo.
 
-        Requiere el complemento de prueba de vida.
+        Fuera de la tarifa: no disponible hasta su implementación
+        (TFM-MIS-MEM/docs#44).
 
         **Patrón:** STATE CREATION OPERATION. **Consumo:** no disponible; su
         coste se fijará al implementarlo.
@@ -1874,9 +1876,10 @@ components:
         faceCount:
           type: integer
           description: |
-            Contador desnormalizado. El límite de rostros indexados es de
-            estado, no acumulativo, por lo que debe evaluarse consultando el
-            valor actual en cada enrolamiento.
+            Contador desnormalizado de los rostros de esta galería. El límite
+            de rostros indexados es de estado y por cuenta, no por galería: se
+            evalúa sobre la suma de los contadores de las galerías de la
+            cuenta, con el valor actual en cada enrolamiento.
         createdAt:
           type: string
           format: date-time
