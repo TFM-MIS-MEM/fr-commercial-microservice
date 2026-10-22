@@ -13,6 +13,9 @@ pydantic-settings>=2.15
 pymongo>=4.18
 pyyaml>=6.0
 structlog>=26.1
+# Cliente HTTP del evaluador de planes, SPACE (F10, src/core/plan.py). Es el
+# mismo cliente que ya usan las pruebas (requirements-dev.in): no se mete otro.
+httpx2>=2.13
 
 # Inferencia (F5, #37). En CPU, siempre: el índice de PyPI sirve `torch` con
 # CUDA también para linux/aarch64 ---medido: 2.14.1+cu130, 3,3 GB de paquetes

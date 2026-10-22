@@ -18,9 +18,15 @@ hilos del pool, así que el ajuste se aplica ahí, antes de cada trabajo; cuesta
 una comparación cuando ya está puesto.
 
 EL REGISTRO DE TIEMPOS. Cada inferencia escribe, en `debug`, cuánto tardaron
-la decodificación con la detección y la extracción del vector. Es el desglose de
+la detección y la extracción del vector. Desde F10 la decodificación va
+aparte, antes de imputar unidades (`read_image`), y no entra en esos tiempos. Es el desglose de
 las latencias del PR de #37 y el que necesitará la campaña de medición; no sale
 en la respuesta, que el contrato no lo declara.
+
+EL PLAN (F10). Cada operación comprueba su funcionalidad, el modelo y el
+umbral; decodifica la imagen (`400` sin cobrar); imputa sus unidades
+(`403 QUOTA_EXCEEDED`); y solo entonces infiere. Lo que falle a partir de ahí
+---`NO_FACE_DETECTED`, por ejemplo--- queda cobrado.
 
 QUÉ ROSTRO. Con varios, el de mayor confianza (src/inference/engine.py). Sin
 ninguno, `detectFaces` responde `200` con la lista vacía y las otras dos `400`
@@ -37,6 +43,7 @@ from typing import TypeVar
 
 import numpy as np
 import torch
+from fastapi import UploadFile
 from PIL import Image
 from starlette.concurrency import run_in_threadpool
 
@@ -44,6 +51,7 @@ from src.core.errors import ErrorReportError
 from src.core.identity import Identity
 from src.core.images import open_image
 from src.core.logger import get_logger
+from src.core.plan import UNITS, Plan
 from src.inference import lssc, provenance
 from src.inference.engine import Engine, versioned
 from src.models.inference import (
@@ -93,9 +101,20 @@ def _png_base64(image: Image.Image) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def best_face(engine: Engine, data: bytes, part: str) -> Image.Image:
+async def read_image(inference: Inference, upload: UploadFile) -> Image.Image:
+    """La imagen decodificada, o `400 INVALID_IMAGE` / `IMAGE_TOO_LARGE`.
+
+    DECODIFICAR VA APARTE, ANTES DE IMPUTAR UNIDADES (F10): una imagen que no se
+    puede leer se rechaza sin cobrar. Bajo el mismo semáforo que la inferencia,
+    para que el trabajo de CPU siga acotado por `INFERENCE_CONCURRENCY`; el
+    precio, con el servicio saturado, es esperar dos veces a la cola.
+    """
+    data = await upload.read()
+    return await run(inference, lambda: open_image(data))
+
+
+def best_face(engine: Engine, image: Image.Image, part: str) -> Image.Image:
     """El recorte alineado del rostro de mayor confianza, o `NO_FACE_DETECTED`."""
-    image = open_image(data)
     faces = engine.detect(image)
     if not faces:
         raise ErrorReportError(
@@ -104,12 +123,15 @@ def best_face(engine: Engine, data: bytes, part: str) -> Image.Image:
     return engine.align(image, faces[0])
 
 
-async def detect_faces(inference: Inference, form: DetectFacesForm) -> DetectFacesResult:
-    data = await form.image.read()
+async def detect_faces(
+    inference: Inference, plan: Plan, form: DetectFacesForm
+) -> DetectFacesResult:
+    plan.require("faceDetection")
+    image = await read_image(inference, form.image)
+    await plan.consume("faceDetection", UNITS["faceDetection"])
 
     def work() -> DetectFacesResult:
         started = perf_counter()
-        image = open_image(data)
         faces = inference.engine.detect(image)
         if form.onlyFirst:
             faces = faces[:1]
@@ -132,7 +154,7 @@ async def detect_faces(inference: Inference, form: DetectFacesForm) -> DetectFac
             operation="detectFaces",
             torch_threads=torch.get_num_threads(),
             pixels=image.width * image.height,
-            decode_detect_ms=_ms(detected - started),
+            detect_ms=_ms(detected - started),
             crops_ms=_ms(perf_counter() - detected),
         )
         return result
@@ -143,7 +165,7 @@ async def detect_faces(inference: Inference, form: DetectFacesForm) -> DetectFac
 VECTOR_PARTS = ("embedding1", "embeddingToken1", "embedding2", "embeddingToken2")
 
 
-async def verify_pair(inference: Inference, form: VerifyPairForm) -> VerificationResult:
+async def verify_pair(inference: Inference, plan: Plan, form: VerifyPairForm) -> VerificationResult:
     sent = [part for part in VECTOR_PARTS if getattr(form, part) is not None]
     if sent:
         raise ErrorReportError(
@@ -156,12 +178,17 @@ async def verify_pair(inference: Inference, form: VerifyPairForm) -> Verificatio
         raise ErrorReportError(400, "BAD_REQUEST", "image1 and image2 are required")
 
     model = form.model.value
-    data1, data2 = await form.image1.read(), await form.image2.read()
+    plan.require("pairVerification")
+    plan.require_model(model)
+    plan.require_threshold(form.threshold)
+    image1 = await read_image(inference, form.image1)
+    image2 = await read_image(inference, form.image2)
+    await plan.consume("pairVerification", UNITS["pairVerification"])
 
     def work() -> VerificationResult:
         started = perf_counter()
-        aligned1 = best_face(inference.engine, data1, "image1")
-        aligned2 = best_face(inference.engine, data2, "image2")
+        aligned1 = best_face(inference.engine, image1, "image1")
+        aligned2 = best_face(inference.engine, image2, "image2")
         detected = perf_counter()
         code1 = lssc.binarize(inference.engine.embed(model, aligned1), model)
         code2 = lssc.binarize(inference.engine.embed(model, aligned2), model)
@@ -174,7 +201,7 @@ async def verify_pair(inference: Inference, form: VerifyPairForm) -> Verificatio
             operation="verifyPair",
             torch_threads=torch.get_num_threads(),
             model=model,
-            decode_detect_ms=_ms(detected - started),
+            detect_ms=_ms(detected - started),
             embed_ms=_ms(embedded - detected),
         )
         return VerificationResult(
@@ -188,7 +215,7 @@ async def verify_pair(inference: Inference, form: VerifyPairForm) -> Verificatio
 
 
 async def extract_embedding(
-    inference: Inference, identity: Identity, form: ExtractEmbeddingForm
+    inference: Inference, identity: Identity, plan: Plan, form: ExtractEmbeddingForm
 ) -> ExtractEmbeddingResult:
     if identity.channel != "api":
         # `extractEmbedding` declara solo `apiKeyAuth`: un JWT no es una
@@ -198,11 +225,14 @@ async def extract_embedding(
         )
 
     model = form.model.value
-    data = await form.image.read()
+    plan.require("embeddingExtraction")
+    plan.require_model(model)
+    image = await read_image(inference, form.image)
+    await plan.consume("embeddingExtraction", UNITS["embeddingExtraction"])
 
     def work() -> ExtractEmbeddingResult:
         started = perf_counter()
-        aligned = best_face(inference.engine, data, "image")
+        aligned = best_face(inference.engine, image, "image")
         detected = perf_counter()
         vector = inference.engine.embed(model, aligned)
         if form.returnBinarized:
@@ -215,7 +245,7 @@ async def extract_embedding(
             operation="extractEmbedding",
             torch_threads=torch.get_num_threads(),
             model=model,
-            decode_detect_ms=_ms(detected - started),
+            detect_ms=_ms(detected - started),
             embed_ms=_ms(embedded - detected),
         )
         return ExtractEmbeddingResult(

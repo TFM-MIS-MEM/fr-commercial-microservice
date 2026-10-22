@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, File, Request
 from src.controllers import inference as controller
 from src.controllers.inference import Inference
 from src.core.identity import Identity, require_identity
+from src.core.plan import Plan, require_plan
 from src.models.inference import (
     DetectFacesForm,
     DetectFacesResult,
@@ -25,7 +26,10 @@ from src.models.inference import (
     VerifyPairForm,
 )
 
-router = APIRouter(prefix="/v1/fr/commercial", dependencies=[Depends(require_identity)])
+router = APIRouter(
+    prefix="/v1/fr/commercial",
+    dependencies=[Depends(require_identity), Depends(require_plan)],
+)
 
 
 def get_inference(request: Request) -> Inference:
@@ -35,17 +39,19 @@ def get_inference(request: Request) -> Inference:
 @router.post("/detection", response_model=DetectFacesResult, operation_id="detectFaces")
 async def detect_faces(
     form: Annotated[DetectFacesForm, File()],
+    plan: Plan = Depends(require_plan),
     inference: Inference = Depends(get_inference),
 ) -> DetectFacesResult:
-    return await controller.detect_faces(inference, form)
+    return await controller.detect_faces(inference, plan, form)
 
 
 @router.post("/verification", response_model=VerificationResult, operation_id="verifyPair")
 async def verify_pair(
     form: Annotated[VerifyPairForm, File()],
+    plan: Plan = Depends(require_plan),
     inference: Inference = Depends(get_inference),
 ) -> VerificationResult:
-    return await controller.verify_pair(inference, form)
+    return await controller.verify_pair(inference, plan, form)
 
 
 @router.post(
@@ -56,6 +62,7 @@ async def verify_pair(
 async def extract_embedding(
     form: Annotated[ExtractEmbeddingForm, File()],
     identity: Identity = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     inference: Inference = Depends(get_inference),
 ) -> ExtractEmbeddingResult:
-    return await controller.extract_embedding(inference, identity, form)
+    return await controller.extract_embedding(inference, identity, plan, form)

@@ -17,14 +17,20 @@ inferencia va antes de cualquier escritura:
      token sería admitir vectores de procedencia desconocida) y la imagen que
      falta (`400`).
   2. La cadena (`404`) y la congelación (`403 GALLERY_FROZEN_MODEL_NOT_IN_PLAN`).
-     El `403` depende solo del estado guardado, no del plan, y el contrato lo
-     declara; por eso lo emite ya F4 y no espera a F10. Las bajas y
-     `updateIdentity` se permiten sobre una congelada: no declaran `403` de
-     dominio, y congelar bloquea enrolar, verificar y buscar (criterio de F3).
-  3. La inferencia: rostro de mayor confianza con el modelo DE LA GALERÍA, y su
-     código LSSC de 192 B. `INVALID_IMAGE`, `IMAGE_TOO_LARGE` y
-     `NO_FACE_DETECTED` como en F5.
-  4. Las escrituras. Un `externalId` repetido se descubre al insertar, después
+     Desde F10 una galería está congelada si lo dice su `status` guardado o si
+     el plan vigente no incluye su modelo: se decide al vuelo, con el plan de
+     la petición, y no se escribe. Las bajas y `updateIdentity` se permiten
+     sobre una congelada: no declaran `403` de dominio, y congelar bloquea
+     enrolar, verificar y buscar (criterio de F3).
+  3. El límite de rostros de la CUENTA (`403 INDEXED_FACES_LIMIT_REACHED`), con
+     los contadores de las galerías: es un límite de estado, y SPACE solo da el
+     valor.
+  4. La imagen, decodificada (`INVALID_IMAGE`, `IMAGE_TOO_LARGE`), y las
+     unidades, imputadas (`403 QUOTA_EXCEEDED`). Lo que falle después queda
+     cobrado.
+  5. La inferencia: rostro de mayor confianza con el modelo DE LA GALERÍA, y su
+     código LSSC de 192 B. `NO_FACE_DETECTED` como en F5.
+  6. Las escrituras. Un `externalId` repetido se descubre al insertar, después
      de inferir: es el precio de escribir sin comprobar antes.
 
 SIN TRANSACCIONES: LA REGLA DE LOS CONTADORES. Ninguna alta deja un contador
@@ -51,14 +57,16 @@ import asyncio
 
 from bson import ObjectId
 from fastapi import UploadFile
+from PIL import Image
 from pymongo import ASCENDING, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import DuplicateKeyError
 
 from src.controllers.common import MAX_SKIP, conflict, not_found, object_id
-from src.controllers.inference import Inference, best_face, run
+from src.controllers.inference import Inference, best_face, read_image, run
 from src.core.errors import ErrorReportError
 from src.core.identity import Identity as Caller
+from src.core.plan import UNITS, Plan
 from src.documents.base import DELETING, LIVE, utc_now
 from src.documents.face import COLLECTION as FACES
 from src.documents.face import FaceDocument
@@ -109,19 +117,49 @@ def _last_face() -> ErrorReportError:
 
 
 async def owned_gallery(
-    db: AsyncDatabase, caller: Caller, gallery_id: str, *, usable: bool = False
+    db: AsyncDatabase, caller: Caller, gallery_id: str, *, usable: Plan | None = None
 ) -> dict:
-    """La galería de la cuenta, o `404`. `usable`, para enrolar, verificar y
-    buscar: además sin marca de borrado (`404`) y sin congelar (`403`)."""
+    """La galería de la cuenta, o `404`.
+
+    `usable`, con el plan de la petición, para enrolar, verificar y buscar:
+    además sin marca de borrado (`404`) y sin congelar (`403`). Congelada es
+    `status` guardado o modelo que el plan no incluye.
+    """
     query = {"_id": object_id(gallery_id, _gallery_missing), "accountId": caller.account_id}
-    if usable:
+    if usable is not None:
         query |= LIVE
-    doc = await db[GALLERIES].find_one(query, projection={"model": 1, "status": 1})
+    doc = await db[GALLERIES].find_one(query, projection={"model": 1, "status": 1, "faceCount": 1})
     if doc is None:
         raise _gallery_missing()
-    if usable and doc["status"] == GalleryStatus.frozen.value:
+    if usable is not None and (
+        doc["status"] == GalleryStatus.frozen.value or not usable.allows_model(doc["model"])
+    ):
         raise _frozen()
     return doc
+
+
+async def require_face_room(db: AsyncDatabase, caller: Caller, plan: Plan) -> None:
+    """Rostros indexados de la cuenta por debajo del límite del plan, o `403`.
+
+    Por cuenta, no por galería: la suma de `faceCount` de sus galerías, que el
+    índice `{accountId, name}` sirve por su prefijo. Los contadores pueden
+    quedarse cortos tras una caída (los corrige la reconciliación), y dos altas
+    simultáneas a un rostro del límite pueden pasar las dos; se acepta.
+    """
+    totals = await db[GALLERIES].aggregate(
+        [
+            {"$match": {"accountId": caller.account_id}},
+            {"$group": {"_id": None, "faces": {"$sum": "$faceCount"}}},
+        ]
+    )
+    faces = next(iter(await totals.to_list()), {"faces": 0})["faces"]
+    if faces >= plan.limits["maxFaces"]:
+        raise ErrorReportError(
+            403,
+            "INDEXED_FACES_LIMIT_REACHED",
+            "The plan does not allow more indexed faces",
+            {"limit": int(plan.limits["maxFaces"])},
+        )
 
 
 async def identity_exists(
@@ -152,19 +190,18 @@ def image_only(form: ImageForm) -> UploadFile:
     return form.image
 
 
-def lssc_code(engine: Engine, data: bytes, model: str) -> bytes:
+def lssc_code(engine: Engine, image: Image.Image, model: str) -> bytes:
     """El código LSSC del rostro de mayor confianza, con el modelo de la galería.
 
     Bloquea: corre en el hilo de trabajo, dentro de `run`. Es el camino de F4,
     y F8 lo reutiliza para la imagen de la petición (src/controllers/recognition.py).
     """
-    aligned = best_face(engine, data, "image")
+    aligned = best_face(engine, image, "image")
     return lssc.binarize(engine.embed(model, aligned), model)
 
 
-async def face_code(inference: Inference, image: UploadFile, model: str) -> bytes:
-    data = await image.read()
-    return await run(inference, lambda: lssc_code(inference.engine, data, model))
+async def face_code(inference: Inference, image: Image.Image, model: str) -> bytes:
+    return await run(inference, lambda: lssc_code(inference.engine, image, model))
 
 
 def _face_document(identity: ObjectId, gallery: ObjectId, code: bytes) -> FaceDocument:
@@ -184,6 +221,7 @@ async def create_identity(
     db: AsyncDatabase,
     inference: Inference,
     caller: Caller,
+    plan: Plan,
     gallery_id: str,
     form: CreateIdentityForm,
 ) -> Identity:
@@ -202,8 +240,11 @@ async def create_identity(
          insertados y la respuesta es `404`.
     """
     image = image_only(form)
-    gallery = await owned_gallery(db, caller, gallery_id, usable=True)
-    code = await face_code(inference, image, gallery["model"])
+    gallery = await owned_gallery(db, caller, gallery_id, usable=plan)
+    await require_face_room(db, caller, plan)
+    picture = await read_image(inference, image)
+    await plan.consume("identityManagement", UNITS["identityManagement"])
+    code = await face_code(inference, picture, gallery["model"])
 
     doc = IdentityDocument(
         galleryId=gallery["_id"], fullName=form.fullName, externalId=form.externalId
@@ -345,6 +386,7 @@ async def add_face(
     db: AsyncDatabase,
     inference: Inference,
     caller: Caller,
+    plan: Plan,
     gallery_id: str,
     identity_id: str,
     form: AddFaceForm,
@@ -360,11 +402,14 @@ async def add_face(
          encuentra, se borra el rostro, se descuenta de la identidad y `404`.
     """
     image = image_only(form)
-    gallery = await owned_gallery(db, caller, gallery_id, usable=True)
+    gallery = await owned_gallery(db, caller, gallery_id, usable=plan)
     oid = object_id(identity_id, _identity_missing)
     if not await identity_exists(db, gallery["_id"], oid, live=True):
         raise _identity_missing()
-    code = await face_code(inference, image, gallery["model"])
+    await require_face_room(db, caller, plan)
+    picture = await read_image(inference, image)
+    await plan.consume("identityManagement", UNITS["identityManagement"])
+    code = await face_code(inference, picture, gallery["model"])
 
     face = _face_document(oid, gallery["_id"], code)
     face.id = (await db[FACES].insert_one(face.to_document())).inserted_id

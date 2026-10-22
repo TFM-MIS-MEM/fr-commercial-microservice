@@ -28,6 +28,13 @@ servicio no arranca si falta o está en blanco. `docker-compose.yml` la exige co
 no distingue hoy el entorno de desarrollo, así que no puede rechazar ese literal
 fuera de él: es TFM-MIS-MEM/docs#117, y hasta F7 nadie verifica el token.
 
+`SPACE_URL` y `SPACE_API_KEY` (F10, #42), igual: sin valor por omisión, y el
+servicio no arranca si faltan. Sin el evaluador de planes no hay operación que
+se pueda admitir. La clave tiene que ser de ORGANIZACIÓN (`org_…`): con una de
+usuario SPACE no evalúa, y el fallo no se vería hasta la primera petición. La
+emite `scripts/space-bootstrap.sh`, que la escribe en el `.env` de este
+repositorio, de donde la toma `docker-compose.dev.yml`.
+
 No se lee ningún fichero `.env` desde aquí. La configuración entra por el
 entorno del proceso ---el compose la pone ahí--- y en ningún otro sitio: un
 `.env` leído en silencio es una segunda fuente que las pruebas no controlan.
@@ -36,6 +43,7 @@ entorno del proceso ---el compose la pone ahí--- y en ningún otro sitio: un
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -65,6 +73,10 @@ class Settings(BaseSettings):
     # Sin valor por omisión, como `mongodb_uri`. `SecretStr` para que no salga
     # en claro en un `repr` ni en un registro.
     embedding_token_secret: SecretStr
+
+    # El evaluador de planes (src/core/plan.py). Sin valor por omisión.
+    space_url: str
+    space_api_key: SecretStr
 
     checkpoints_dir: Path = CHECKPOINTS_DIR
 
@@ -97,6 +109,24 @@ class Settings(BaseSettings):
     def _embedding_token_secret(cls, value: SecretStr) -> SecretStr:
         if value.get_secret_value().strip() == "":
             raise ValueError("EMBEDDING_TOKEN_SECRET está en blanco")
+        return value
+
+    @field_validator("space_url")
+    @classmethod
+    def _space_url(cls, value: str) -> str:
+        parts = urlsplit(value.strip())
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError("SPACE_URL no es una URL http(s) con anfitrión")
+        return value.strip().rstrip("/")
+
+    @field_validator("space_api_key")
+    @classmethod
+    def _space_api_key(cls, value: SecretStr) -> SecretStr:
+        key = value.get_secret_value().strip()
+        if key == "":
+            raise ValueError("SPACE_API_KEY está en blanco")
+        if not key.startswith("org_"):
+            raise ValueError("SPACE_API_KEY no es una clave de organización de SPACE (org_…)")
         return value
 
 

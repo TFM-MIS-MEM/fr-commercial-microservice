@@ -24,6 +24,7 @@ from src.main import create_app
 from src.models.gallery import FrozenReason, GalleryStatus, ModelName
 from tests.conftest import BASE_URL
 from tests.support.identity import gateway_headers
+from tests.support.plan import with_fake_space
 from tests.support.seed import seed_gallery
 from tests.support.settings import settings
 
@@ -105,7 +106,7 @@ def test_a_corrupt_gallery_is_a_500_when_read(test_db_uri, db, fields):
     # invariante no se sirve. Mejor un 500 que una respuesta que el contrato
     # declara imposible. Cliente propio: el común relanza la excepción en vez de
     # devolver la respuesta que el cliente vería.
-    app = create_app(settings(test_db_uri))
+    app = with_fake_space(create_app(settings(test_db_uri)))
     with TestClient(app, base_url=BASE_URL, raise_server_exceptions=False) as client:
         gallery_id = seed_gallery(db, "acc-a", **fields)
         res = client.get(

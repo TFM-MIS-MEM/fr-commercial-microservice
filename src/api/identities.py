@@ -20,10 +20,18 @@ from src.controllers.inference import Inference
 from src.core.database import get_db
 from src.core.identity import Identity as Caller
 from src.core.identity import require_identity
+from src.core.plan import Plan, require_plan, requires
 from src.models.face import AddFaceForm, Face
 from src.models.identity import CreateIdentityForm, Identity, IdentityPage, IdentityUpdate
 
-router = APIRouter(prefix="/v1/fr/commercial", dependencies=[Depends(require_identity)])
+router = APIRouter(
+    prefix="/v1/fr/commercial",
+    dependencies=[
+        Depends(require_identity),
+        Depends(require_plan),
+        Depends(requires("identityManagement")),
+    ],
+)
 
 IDENTITIES = "/galleries/{galleryId}/identities"
 IDENTITY = IDENTITIES + "/{identityId}"
@@ -34,10 +42,11 @@ async def create_identity(
     galleryId: str,  # noqa: N803 — el nombre del contrato
     form: Annotated[CreateIdentityForm, File()],
     caller: Caller = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
     inference: Inference = Depends(get_inference),
 ) -> Identity:
-    return await controller.create_identity(db, inference, caller, galleryId, form)
+    return await controller.create_identity(db, inference, caller, plan, galleryId, form)
 
 
 # Las cotas, las del contrato: fuera de rango es `400`, nunca se acota en
@@ -91,10 +100,11 @@ async def add_face(
     identityId: str,  # noqa: N803
     form: Annotated[AddFaceForm, File()],
     caller: Caller = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
     inference: Inference = Depends(get_inference),
 ) -> Face:
-    return await controller.add_face(db, inference, caller, galleryId, identityId, form)
+    return await controller.add_face(db, inference, caller, plan, galleryId, identityId, form)
 
 
 @router.delete(

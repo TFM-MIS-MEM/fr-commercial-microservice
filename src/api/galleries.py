@@ -12,18 +12,27 @@ from pymongo.asynchronous.database import AsyncDatabase
 from src.controllers import galleries as controller
 from src.core.database import get_db
 from src.core.identity import Identity, require_identity
+from src.core.plan import Plan, require_plan, requires
 from src.models.gallery import Gallery, GalleryCreate, GalleryPage, GalleryUpdate
 
-router = APIRouter(prefix="/v1/fr/commercial", dependencies=[Depends(require_identity)])
+router = APIRouter(
+    prefix="/v1/fr/commercial",
+    dependencies=[
+        Depends(require_identity),
+        Depends(require_plan),
+        Depends(requires("galleryManagement")),
+    ],
+)
 
 
 @router.post("/galleries", response_model=Gallery, status_code=201, operation_id="createGallery")
 async def create_gallery(
     body: GalleryCreate,
     identity: Identity = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
 ) -> Gallery:
-    return await controller.create_gallery(db, identity, body)
+    return await controller.create_gallery(db, identity, plan, body)
 
 
 # Las cotas, las del contrato: fuera de rango es `400`, nunca se acota en

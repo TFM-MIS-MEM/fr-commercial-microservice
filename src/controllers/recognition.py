@@ -10,22 +10,27 @@ después de todo lo que no la necesita:
      hasta F12: aceptarlo sin comprobarlo sería dar por superada una prueba que
      nadie ha hecho), las entradas por vector (`400
      EMBEDDING_INPUT_NOT_SUPPORTED` hasta F7) y la imagen que falta (`400`).
-  2. La cadena (`404`, también con marca de borrado o identificador imposible,
+  2. El plan: `threshold` exige el umbral configurable (`403
+     FEATURE_NOT_IN_PLAN`); la funcionalidad la comprueba la ruta.
+  3. La cadena (`404`, también con marca de borrado o identificador imposible,
      también para `ADMIN`) y la congelación (`403
-     GALLERY_FROZEN_MODEL_NOT_IN_PLAN`), ANTES de inferir.
-  3. La inferencia, por el camino de F4 (`identities.lssc_code`): rostro de
+     GALLERY_FROZEN_MODEL_NOT_IN_PLAN`, guardada o porque el plan no incluye el
+     modelo de la galería), ANTES de inferir.
+  4. La imagen decodificada y las unidades imputadas (`403 QUOTA_EXCEEDED`):
+     1,5 la verificación; la búsqueda, 1,5 + 0,05 por cada 1.000 rostros de la
+     galería, proporcional, con su `faceCount`. Lo que falle después queda
+     cobrado.
+  5. La inferencia, por el camino de F4 (`identities.lssc_code`): rostro de
      mayor confianza con el modelo DE LA GALERÍA, y su código LSSC.
      `INVALID_IMAGE`, `IMAGE_TOO_LARGE` y `NO_FACE_DETECTED` como en F5.
-  4. La comparación, por distancia de Hamming contra los códigos guardados.
+  6. La comparación, por distancia de Hamming contra los códigos guardados.
 
 LA DECISIÓN se toma con `lssc.confidence(int(d))`, la MISMA expresión que
 `lssc.default_threshold`, nunca sobre un vector de confianzas de numpy: así una
 distancia igual a `d_max` da exactamente el umbral y cuenta como coincidencia,
 como en `verifyPair`.
 
-PROVISIONAL HASTA F10: `threshold` se acepta siempre y no se emite el `403
-FEATURE_NOT_IN_PLAN` del plan gratuito, igual que `model` en F3. Sin él, el del
-modelo de la galería.
+Sin `threshold`, el del modelo de la galería.
 
 HASTA F11: `verifyAgainstIdentity` declara `enrollmentToken`, pero la
 dependencia de identidad sigue exigiendo las tres cabeceras de la pasarela.
@@ -70,10 +75,11 @@ from src.controllers.identities import (
     lssc_code,
     owned_gallery,
 )
-from src.controllers.inference import Inference, run
+from src.controllers.inference import Inference, read_image, run
 from src.core.errors import ErrorReportError
 from src.core.identity import Identity as Caller
 from src.core.logger import get_logger
+from src.core.plan import UNITS, Plan, search_units
 from src.documents.base import LIVE
 from src.documents.face import COLLECTION as FACES
 from src.documents.identity import COLLECTION as IDENTITIES
@@ -144,6 +150,7 @@ async def verify_against_identity(
     db: AsyncDatabase,
     inference: Inference,
     caller: Caller,
+    plan: Plan,
     gallery_id: str,
     identity_id: str,
     form: VerifyAgainstIdentityForm,
@@ -160,7 +167,8 @@ async def verify_against_identity(
     """
     _no_liveness(form)
     image = image_only(form)
-    gallery = await owned_gallery(db, caller, gallery_id, usable=True)
+    plan.require_threshold(form.threshold)
+    gallery = await owned_gallery(db, caller, gallery_id, usable=plan)
     oid = object_id(identity_id, _identity_missing)
     if not await identity_exists(db, gallery["_id"], oid, live=True):
         raise _identity_missing()
@@ -172,11 +180,12 @@ async def verify_against_identity(
         raise _identity_missing()
 
     model = gallery["model"]
-    data = await image.read()
+    picture = await read_image(inference, image)
+    await plan.consume("identityVerification", UNITS["identityVerification"])
 
     def work() -> int:
         started = perf_counter()
-        probe = lssc_code(inference.engine, data, model)
+        probe = lssc_code(inference.engine, picture, model)
         inferred = perf_counter()
         d_min = int(lssc.hamming_many(probe, codes).min())
         logger.debug(
@@ -205,6 +214,7 @@ async def search_gallery(
     db: AsyncDatabase,
     inference: Inference,
     caller: Caller,
+    plan: Plan,
     gallery_id: str,
     form: SearchGalleryForm,
 ) -> SearchResult:
@@ -236,9 +246,12 @@ async def search_gallery(
     acepta para no ordenar candidatos ni añadir un `$in`.
     """
     image = image_only(form)
-    gallery = await owned_gallery(db, caller, gallery_id, usable=True)
+    plan.require_threshold(form.threshold)
+    gallery = await owned_gallery(db, caller, gallery_id, usable=plan)
     model = gallery["model"]
-    probe = await face_code(inference, image, model)
+    picture = await read_image(inference, image)
+    await plan.consume("gallerySearch", search_units(gallery.get("faceCount", 0)))
+    probe = await face_code(inference, picture, model)
 
     started = perf_counter()
     collection = db[FACES]

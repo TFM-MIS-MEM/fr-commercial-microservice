@@ -33,7 +33,9 @@ from fastapi.testclient import TestClient
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
+from src.core.plan import get_space
 from src.main import create_app
+from tests.support.plan import FakeSpace
 from tests.support.settings import settings
 
 # Un `servers` del contrato: openapi-core rechaza un anfitrión que no figure en
@@ -94,7 +96,14 @@ def db(sync_db):
 
 
 @pytest.fixture
-def client(test_db_uri, db):
+def space() -> FakeSpace:
+    """SPACE doblado; por omisión, plan Business (tests/support/plan.py)."""
+    return FakeSpace()
+
+
+@pytest.fixture
+def client(test_db_uri, db, space):
     app = create_app(settings(test_db_uri))
+    app.dependency_overrides[get_space] = lambda: space
     with TestClient(app, base_url=BASE_URL) as test_client:
         yield test_client
