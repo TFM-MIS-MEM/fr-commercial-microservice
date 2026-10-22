@@ -35,13 +35,25 @@ info:
 
     ## Unidades de consumo
 
-    Cada operación imputa un número variable de unidades, calculado como
-    `n_inferencias × peso_modelo`, más un término dependiente del tamaño de la
-    galería en las operaciones de búsqueda. Las operaciones sin inferencia
-    imputan 0,1 unidades; las de gestión no imputan consumo.
+    Una unidad equivale a una detección sobre una imagen de 480 × 640. Cada
+    operación imputa las unidades fijas de su tipo, medidas en la campaña de
+    capacidad:
 
-    Pesos por modelo (hipótesis pendiente de validación empírica):
-    `xs` = 1, `s` = 3, `base` = 10.
+    | Operación | Unidades |
+    |---|---|
+    | Detección | 1 |
+    | Verificación de dos imágenes (cualquier modelo) | 3 |
+    | Identificación 1:N | 1,5 + 0,05 por cada 1.000 rostros de la galería |
+    | Extracción de vectores | 1,5 |
+    | Alta de identidad / añadir rostro (con imagen) | 1,5 |
+    | Verificación contra identidad | 1,5 |
+    | Gestión | 0 |
+
+    **Sin peso por modelo**: los tres modelos cuestan lo mismo dentro del
+    error de la medición.
+
+    Las entradas con vector y la prueba de vida quedan fuera de la tarifa:
+    hoy no están disponibles, y su coste se fijará al implementarlas.
 
     ## Modelo e inmutabilidad de la galería
 
@@ -365,7 +377,8 @@ paths:
         Admite token de enrolamiento con ámbito `enroll`.
 
         **Patrón:** STATE CREATION OPERATION.
-        **Consumo:** `1 × peso_modelo` con imagen; 0,1 unidades con vector.
+        **Consumo:** 1,5 unidades con imagen. Con vector, no disponible; su
+        coste se fijará al implementarlo.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -589,7 +602,8 @@ paths:
         cuota.
 
         **Patrón:** STATE CREATION OPERATION.
-        **Consumo:** `1 × peso_modelo` con imagen; 0,1 unidades con vector.
+        **Consumo:** 1,5 unidades con imagen. Con vector, no disponible; su
+        coste se fijará al implementarlo.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -726,7 +740,8 @@ paths:
         resultado depende del estado almacenado; las operaciones de inferencia
         sin acceso a estado se clasifican como COMPUTATION FUNCTION.
 
-        **Consumo:** `1 × peso_modelo`.
+        **Consumo:** 1,5 unidades con imagen. Con vector o con
+        `livenessToken`, no disponible; su coste se fijará al implementarlo.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -752,8 +767,8 @@ paths:
                   minimum: 0
                   maximum: 1
                   description: |
-                    Umbral de confianza. Solo admisible en los planes Pro y
-                    Business; en el plan gratuito produce `403`.
+                    Umbral de confianza. Solo admisible en el plan Business;
+                    en los demás planes produce `403`.
                 livenessToken:
                   type: string
                   description: |
@@ -830,7 +845,9 @@ paths:
         verifique el token de procedencia.
 
         **Patrón:** RETRIEVAL OPERATION.
-        **Consumo:** `1 × peso_modelo + f(tamaño_galería)`.
+        **Consumo:** 1,5 unidades más 0,05 por cada 1.000 rostros de la
+        galería, con imagen. Con vector, no disponible; su coste se fijará al
+        implementarlo.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -854,6 +871,9 @@ paths:
                   format: float
                   minimum: 0
                   maximum: 1
+                  description: |
+                    Umbral de confianza. Solo admisible en el plan Business;
+                    en los demás planes produce `403`.
       responses:
         '200':
           description: |
@@ -932,7 +952,7 @@ paths:
         **Patrón:** COMPUTATION FUNCTION. No accede a estado alguno del
         servidor: con la misma entrada devuelve siempre el mismo resultado.
 
-        **Consumo:** `peso_detector`.
+        **Consumo:** 1 unidad.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -1024,10 +1044,8 @@ paths:
 
         **Patrón:** COMPUTATION FUNCTION.
 
-        **Consumo:** `2 × peso_modelo` con dos imágenes; `1 × peso_modelo` con
-        una imagen y un vector; 0,1 unidades con dos vectores. La operación
-        refleja así el coste real: el cliente que reutiliza vectores ya
-        extraídos paga menos porque efectivamente cuesta menos.
+        **Consumo:** 3 unidades con dos imágenes, con cualquier modelo. Con uno
+        o dos vectores, no disponible; su coste se fijará al implementarlo.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -1060,6 +1078,9 @@ paths:
                   format: float
                   minimum: 0
                   maximum: 1
+                  description: |
+                    Umbral de confianza. Solo admisible en el plan Business;
+                    en los demás planes produce `403`.
       responses:
         '200':
           description: Resultado de la verificación
@@ -1119,7 +1140,7 @@ paths:
         `API_CHANNEL_REQUIRED`: para esta operación, un JWT no es una
         credencial admitida.
 
-        **Patrón:** COMPUTATION FUNCTION. **Consumo:** `1 × peso_modelo`.
+        **Patrón:** COMPUTATION FUNCTION. **Consumo:** 1,5 unidades.
       security:
         - apiKeyAuth: []
       requestBody:
@@ -1208,7 +1229,8 @@ paths:
 
         Requiere el complemento de prueba de vida.
 
-        **Patrón:** STATE CREATION OPERATION. **Consumo:** 0 unidades.
+        **Patrón:** STATE CREATION OPERATION. **Consumo:** no disponible; su
+        coste se fijará al implementarlo.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -1280,7 +1302,7 @@ paths:
         una operación posterior de verificación o enrolamiento.
 
         **Patrón:** STATE TRANSITION OPERATION (consume el reto).
-        **Consumo:** `n_fotogramas × peso_detector`.
+        **Consumo:** no disponible; su coste se fijará al implementarlo.
       security:
         - bearerAuth: []
         - apiKeyAuth: []
@@ -2201,8 +2223,10 @@ components:
 
     ForbiddenQuotaOrModel:
       description: |
-        Cuota mensual agotada (`QUOTA_EXCEEDED`), modelo no disponible en el
-        plan (`MODEL_NOT_IN_PLAN`) o parámetro reservado a planes superiores
+        Cuota agotada (`QUOTA_EXCEEDED`), en cualquiera de los tres límites de
+        unidades del plan (por minuto, por hora o por mes), con `details` que
+        dicen cuál ha saltado y cuándo se renueva; modelo no disponible en el
+        plan (`MODEL_NOT_IN_PLAN`); o parámetro reservado a planes superiores
         (`FEATURE_NOT_IN_PLAN`).
 
         Con `apiKeyAuth`, este mismo `403` puede llegar además de la
@@ -2215,9 +2239,11 @@ components:
 
     ForbiddenGalleryOrQuota:
       description: |
-        Galería congelada (`GALLERY_FROZEN_MODEL_NOT_IN_PLAN`), cuota agotada
-        (`QUOTA_EXCEEDED`), límite de rostros indexados alcanzado
-        (`INDEXED_FACES_LIMIT_REACHED`) o parámetro reservado a planes
+        Galería congelada (`GALLERY_FROZEN_MODEL_NOT_IN_PLAN`); cuota agotada
+        (`QUOTA_EXCEEDED`), en cualquiera de los tres límites de unidades del
+        plan (por minuto, por hora o por mes), con `details` que dicen cuál ha
+        saltado y cuándo se renueva; límite de rostros indexados alcanzado
+        (`INDEXED_FACES_LIMIT_REACHED`); o parámetro reservado a planes
         superiores (`FEATURE_NOT_IN_PLAN`).
 
         Con `apiKeyAuth`, este mismo `403` puede llegar además de la
