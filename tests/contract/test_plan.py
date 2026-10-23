@@ -268,9 +268,46 @@ def test_a_gallery_frozen_on_the_fly_can_still_be_read_and_deleted_and_is_not_re
     assert identities.listing(client, gallery).status_code == 200
     read = checked(client.get(ONE.format(gallery), headers=WEB))
     assert read.status_code == 200
-    # Al vuelo: no se persiste.
-    assert read.json()["status"] == "active"
+    assert read.json()["status"] == "frozen"
+    # Al vuelo: no se escribe.
+    assert db.galleries.find_one({})["status"] == "active"
+    assert "frozenReason" not in db.galleries.find_one({})
     assert identities.delete(client, gallery, identity).status_code == 204
+
+
+@pytest.fixture
+def base_gallery_in_pro(db, space):
+    space.use(pro())
+    return seed_gallery(db, ACCOUNT_A, model="base", status="active")
+
+
+def test_a_base_gallery_reads_frozen_in_pro_without_the_base_model(client, base_gallery_in_pro):
+    """Lo que dicen las lecturas es lo que deciden las altas: congelada."""
+    one = checked(client.get(ONE.format(base_gallery_in_pro), headers=WEB)).json()
+    (listed,) = galleries(client).json()["items"]
+
+    for gallery in (one, listed):
+        assert (gallery["status"], gallery["frozenReason"]) == ("frozen", "MODEL_NOT_IN_PLAN")
+    renamed = checked(
+        client.patch(ONE.format(base_gallery_in_pro), json={"name": "Otra"}, headers=WEB)
+    )
+    assert renamed.json()["status"] == "frozen"
+    assert_code(
+        identities.enroll(client, base_gallery_in_pro), 403, "GALLERY_FROZEN_MODEL_NOT_IN_PLAN"
+    )
+
+
+def test_the_same_gallery_reads_active_with_the_base_model_add_on(
+    client, base_gallery_in_pro, space
+):
+    space.features["modelBase"] = True  # el complemento baseModel
+
+    one = checked(client.get(ONE.format(base_gallery_in_pro), headers=WEB)).json()
+    (listed,) = galleries(client).json()["items"]
+
+    for gallery in (one, listed):
+        assert gallery["status"] == "active"
+        assert "frozenReason" not in gallery
 
 
 # =================================================================== QUOTA_EXCEEDED

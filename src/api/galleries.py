@@ -42,18 +42,20 @@ async def list_galleries(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),  # noqa: N803 — el nombre del contrato
     identity: Identity = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
 ) -> GalleryPage:
-    return await controller.list_galleries(db, identity, page, pageSize)
+    return await controller.list_galleries(db, identity, plan, page, pageSize)
 
 
 @router.get("/galleries/{galleryId}", response_model=Gallery, operation_id="getGallery")
 async def get_gallery(
     galleryId: str,  # noqa: N803 — el nombre del contrato
     identity: Identity = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
 ) -> Gallery:
-    return await controller.get_gallery(db, identity, galleryId)
+    return await controller.get_gallery(db, identity, plan, galleryId)
 
 
 @router.patch("/galleries/{galleryId}", response_model=Gallery, operation_id="updateGallery")
@@ -61,9 +63,10 @@ async def update_gallery(
     galleryId: str,  # noqa: N803 — el nombre del contrato
     body: GalleryUpdate,
     identity: Identity = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
 ) -> Gallery:
-    return await controller.update_gallery(db, identity, galleryId, body)
+    return await controller.update_gallery(db, identity, plan, galleryId, body)
 
 
 @router.delete(

@@ -89,11 +89,11 @@ async def create_gallery(
     except DuplicateKeyError as exc:
         raise conflict(exc) from None
     doc.id = result.inserted_id
-    return Gallery.from_document(doc)
+    return Gallery.from_document(doc, plan)
 
 
 async def list_galleries(
-    db: AsyncDatabase, identity: Identity, page: int, page_size: int
+    db: AsyncDatabase, identity: Identity, plan: Plan, page: int, page_size: int
 ) -> GalleryPage:
     """RETRIEVAL OPERATION, paginada.
 
@@ -119,15 +119,21 @@ async def list_galleries(
         cursor = db[COLLECTION].find(query).sort("_id", ASCENDING).skip(skip).limit(page_size)
         docs, total = await asyncio.gather(cursor.to_list(), count)
     return GalleryPage(
-        items=[Gallery.from_document(GalleryDocument.model_validate(d)) for d in docs],
+        items=[Gallery.from_document(GalleryDocument.model_validate(d), plan) for d in docs],
         page=page,
         pageSize=page_size,
         total=total,
     )
 
 
-async def get_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str) -> Gallery:
-    """RETRIEVAL OPERATION: la cuenta propietaria forma parte del filtro."""
+async def get_gallery(
+    db: AsyncDatabase, identity: Identity, plan: Plan, gallery_id: str
+) -> Gallery:
+    """RETRIEVAL OPERATION: la cuenta propietaria forma parte del filtro.
+
+    El `status` sale con el plan de la petición: congelada al vuelo si el plan
+    no incluye su modelo (`Gallery.from_document`).
+    """
     oid = _object_id(gallery_id)
 
     doc = await db[COLLECTION].find_one({"_id": oid, "accountId": identity.account_id})
@@ -135,11 +141,11 @@ async def get_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str) ->
         raise _not_found()
     # Un documento corrupto no se sirve: `ValidationError`, y `500`. El porqué,
     # en src/documents/gallery.py.
-    return Gallery.from_document(GalleryDocument.model_validate(doc))
+    return Gallery.from_document(GalleryDocument.model_validate(doc), plan)
 
 
 async def update_gallery(
-    db: AsyncDatabase, identity: Identity, gallery_id: str, body: GalleryUpdate
+    db: AsyncDatabase, identity: Identity, plan: Plan, gallery_id: str, body: GalleryUpdate
 ) -> Gallery:
     """STATE TRANSITION OPERATION sobre `name` y `description`.
 
@@ -154,7 +160,7 @@ async def update_gallery(
     oid = _object_id(gallery_id)
     changes = {name: getattr(body, name) for name in body.model_fields_set}
     if not changes:
-        return await get_gallery(db, identity, gallery_id)
+        return await get_gallery(db, identity, plan, gallery_id)
 
     changes["updatedAt"] = utc_now()
     try:
@@ -167,7 +173,7 @@ async def update_gallery(
         raise conflict(exc) from None
     if doc is None:
         raise _not_found()
-    return Gallery.from_document(GalleryDocument.model_validate(doc))
+    return Gallery.from_document(GalleryDocument.model_validate(doc), plan)
 
 
 async def delete_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str) -> None:

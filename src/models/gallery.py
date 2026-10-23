@@ -36,6 +36,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 if TYPE_CHECKING:
     # Solo para el tipo: `src/documents` importa los enums de este módulo.
+    from src.core.plan import Plan
     from src.documents.gallery import GalleryDocument
 
 
@@ -85,19 +86,32 @@ class Gallery(BaseModel):
         return data
 
     @classmethod
-    def from_document(cls, stored: "GalleryDocument") -> "Gallery":
+    def from_document(cls, stored: "GalleryDocument", plan: "Plan | None" = None) -> "Gallery":
         """Del documento ya leído (`src/documents`) a la respuesta, campo a campo.
 
         Nunca `cls(**stored.model_dump())`: el documento lleva `accountId`, y lo
         que no se nombra aquí no sale.
+
+        CONGELADA AL VUELO (F10): con el plan de la petición, una galería cuyo
+        modelo el plan no incluye sale `frozen` con `MODEL_NOT_IN_PLAN`, aunque
+        el documento diga `active`. Es lo mismo que deciden las altas, la
+        verificación y la búsqueda (`identities.owned_gallery`); no se escribe,
+        y vuelve a `active` en cuanto el plan incluye el modelo.
         """
+        status, reason = stored.status, stored.frozenReason
+        if (
+            plan is not None
+            and status == GalleryStatus.active
+            and not plan.allows_model(stored.model.value)
+        ):
+            status, reason = GalleryStatus.frozen, FrozenReason.MODEL_NOT_IN_PLAN
         return cls(
             id=str(stored.id),
             name=stored.name,
             description=stored.description,
             model=stored.model,
-            status=stored.status,
-            frozenReason=stored.frozenReason,
+            status=status,
+            frozenReason=reason,
             identityCount=stored.identityCount,
             faceCount=stored.faceCount,
             createdAt=stored.createdAt,

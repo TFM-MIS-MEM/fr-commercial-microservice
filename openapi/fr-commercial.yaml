@@ -77,7 +77,9 @@ info:
     - **Congelación**: una galería cuyo modelo no incluye el plan está
       congelada; las altas, la verificación y la búsqueda responden
       `403 GALLERY_FROZEN_MODEL_NOT_IN_PLAN`. Se decide con el plan vigente en
-      cada petición, sin guardarse: el `status` de la galería no lo refleja.
+      cada petición y no se guarda: las lecturas de la galería la devuelven con
+      `status: frozen` y `frozenReason: MODEL_NOT_IN_PLAN`, y vuelve a `active`
+      en cuanto el plan incluye su modelo.
     - **Límites de estado**: las galerías de la cuenta
       (`403 GALLERY_LIMIT_REACHED`) y los rostros indexados en el conjunto de
       sus galerías (`403 INDEXED_FACES_LIMIT_REACHED`).
