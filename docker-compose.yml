@@ -50,6 +50,10 @@ services:
       # en dos planos que MONGODB_URI. Generarlo con
       # `python -c "import secrets; print(secrets.token_hex(32))"`.
       - "EMBEDDING_TOKEN_SECRET=${EMBEDDING_TOKEN_SECRET:?obligatorio y sin defecto: python -c 'import secrets; print(secrets.token_hex(32))'}"
+      # El evaluador de planes (F10): misma guarda en dos planos. La clave es
+      # de organización (`org_…`), de ámbito MANAGEMENT.
+      - "SPACE_URL=${SPACE_URL:?obligatorio y sin defecto: la URL interna de space-server}"
+      - "SPACE_API_KEY=${SPACE_API_KEY:?obligatorio y sin defecto: la emite scripts/space-bootstrap.sh}"
     depends_on:
       - fr-commercial-mongodb
     networks:

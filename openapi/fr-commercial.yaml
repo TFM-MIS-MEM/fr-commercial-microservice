@@ -63,6 +63,44 @@ info:
     la **congelación** de la galería, que pasa a solo lectura conservando
     íntegramente sus datos.
 
+    ## El plan de la cuenta
+
+    Lo que cada cuenta puede hacer lo decide su plan, que evalúa SPACE con la
+    tarifa publicada. Toda operación de galerías, identidades, reconocimiento
+    e inferencia consulta el plan antes de servirse:
+
+    - **Canal**: por el canal de API, el plan tiene que incluirlo
+      (`403 FEATURE_NOT_IN_PLAN`).
+    - **Funcionalidad, modelo y umbral**: `403 FEATURE_NOT_IN_PLAN` y
+      `403 MODEL_NOT_IN_PLAN`. Enviar `threshold` exige el umbral
+      configurable.
+    - **Congelación**: una galería cuyo modelo no incluye el plan está
+      congelada; las altas, la verificación y la búsqueda responden
+      `403 GALLERY_FROZEN_MODEL_NOT_IN_PLAN`. Se decide con el plan vigente en
+      cada petición y no se guarda: las lecturas de la galería la devuelven con
+      `status: frozen` y `frozenReason: MODEL_NOT_IN_PLAN`, y vuelve a `active`
+      en cuanto el plan incluye su modelo.
+    - **Límites de estado**: las galerías de la cuenta
+      (`403 GALLERY_LIMIT_REACHED`) y los rostros indexados en el conjunto de
+      sus galerías (`403 INDEXED_FACES_LIMIT_REACHED`).
+    - **Unidades**: una operación que consume las imputa al admitirse,
+      después de todas las comprobaciones que no necesitan inferir y antes de
+      inferir. Si cualquiera de los tres límites está agotado, responde
+      `403 QUOTA_EXCEEDED` con `details.limit` ---`minute`, `hour` o `month`,
+      el primero agotado--- y `details.resetAt`, el instante en que ese
+      límite se renueva.
+
+    Dos consecuencias que se aceptan:
+
+    - Una operación admitida que falla después ---por ejemplo, una imagen en
+      la que no se detecta ningún rostro--- queda cobrada: no se devuelven
+      unidades.
+    - El límite se comprueba antes de sumar el coste de la operación: una
+      cuenta puede pasarse de un límite en lo que cueste una operación.
+
+    Si el plan no se puede consultar, la operación responde
+    `503 PLAN_UNAVAILABLE` con `Retry-After`, en los dos canales.
+
     ## Respuestas declaradas
 
     Se declara lo que es una decisión, no lo que es un fallo.
@@ -72,6 +110,8 @@ info:
       pasarela la alcance: el limitador es global y no mira credenciales.
     - Toda operación con `security` declara además `401`.
     - Toda operación que admite `apiKeyAuth` declara además `503` y `403`.
+    - Toda operación que consulta el plan de la cuenta declara `503`
+      (`PLAN_UNAVAILABLE`) y `403`, en los dos canales.
     - Se declara `403` también en las operaciones que pueden denegarse por
       plan, cuota o estado del recurso, con los códigos de dominio propios.
     - Se declara `400` en toda operación con cuerpo y en toda operación con un
@@ -201,8 +241,13 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            Modelo no disponible en el plan (`MODEL_NOT_IN_PLAN`) o límite de
-            galerías alcanzado (`GALLERY_LIMIT_REACHED`).
+            Modelo no disponible en el plan (`MODEL_NOT_IN_PLAN`), límite de
+            galerías alcanzado (`GALLERY_LIMIT_REACHED`) o canal de API no
+            incluido en el plan (`FEATURE_NOT_IN_PLAN`).
+
+            Con `apiKeyAuth`, este mismo `403` puede llegar además de la
+            pasarela con el código `ACCOUNT_SUSPENDED`, que no es de dominio:
+            ver `ForbiddenAccountSuspended`.
           content:
             application/json:
               schema:
@@ -212,7 +257,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
     get:
       tags: [Galerías]
       summary: Listar las galerías de la cuenta
@@ -248,11 +293,11 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   /v1/fr/commercial/galleries/{galleryId}:
     parameters:
@@ -275,13 +320,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
     patch:
       tags: [Galerías]
       summary: Modificar una galería
@@ -320,7 +365,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -328,7 +373,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
     delete:
       tags: [Galerías]
       summary: Eliminar una galería
@@ -348,13 +393,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   # ------------------------------------------------------------- Identidades
 
@@ -435,7 +480,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
     get:
       tags: [Identidades]
       summary: Listar las identidades de una galería
@@ -476,13 +521,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   /v1/fr/commercial/galleries/{galleryId}/identities/{identityId}:
     parameters:
@@ -506,13 +551,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
     patch:
       tags: [Identidades]
       summary: Modificar una identidad
@@ -546,7 +591,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -554,7 +599,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
     delete:
       tags: [Identidades]
       summary: Eliminar una identidad
@@ -573,13 +618,13 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   # ----------------------------------------------------------------- Rostros
 
@@ -641,7 +686,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   /v1/fr/commercial/galleries/{galleryId}/identities/{identityId}/faces/{faceId}:
     parameters:
@@ -670,7 +715,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/ForbiddenAccountSuspended'
+          $ref: '#/components/responses/ForbiddenFeature'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -692,7 +737,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   # -------------------------------------------------- Inferencia con estado
 
@@ -808,7 +853,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   /v1/fr/commercial/galleries/{galleryId}/search:
     parameters:
@@ -927,7 +972,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   # ----------------------------------------------- Inferencia sin estado
 
@@ -1012,7 +1057,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   /v1/fr/commercial/verification:
     post:
@@ -1110,7 +1155,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   /v1/fr/commercial/extract-embeddings:
     post:
@@ -1210,7 +1255,7 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          $ref: '#/components/responses/ServiceOrPlanUnavailable'
 
   # --------------------------------------------------------- Prueba de vida
 
@@ -2101,6 +2146,29 @@ components:
 
   responses:
 
+    ServiceOrPlanUnavailable:
+      description: |
+        La operación no se puede decidir ahora. Dos códigos, de dos emisores:
+
+        - `PLAN_UNAVAILABLE`, del servicio: no ha podido consultar el plan de
+          la cuenta, porque el evaluador de planes (SPACE) no responde en el
+          plazo, responde con un error o no puede evaluar la tarifa. **Puede
+          producirse en los dos canales.** No se admite por omisión: sin plan
+          no se sabe qué está permitido ni se puede imputar el consumo. Lleva
+          `Retry-After`.
+        - `AUTH_UNAVAILABLE`, de la pasarela, y **solo en el canal de API**:
+          el servicio de autenticación no responde. Ver `ServiceUnavailable`.
+      headers:
+        Retry-After:
+          description: Segundos tras los que conviene reintentar. Solo con `PLAN_UNAVAILABLE`.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorReport'
+
     BadRequest:
       description: Petición mal formada
       content:
@@ -2214,7 +2282,9 @@ components:
     ForbiddenFeature:
       description: |
         Funcionalidad no incluida en el plan contratado
-        (`FEATURE_NOT_IN_PLAN`).
+        (`FEATURE_NOT_IN_PLAN`). En las operaciones de gestión, la única causa
+        posible es el canal: la petición llega por el canal de API y el plan
+        no lo incluye.
 
         Con `apiKeyAuth`, este mismo `403` puede llegar además de la
         pasarela con el código `ACCOUNT_SUSPENDED`, que no es de dominio:
@@ -2228,8 +2298,9 @@ components:
       description: |
         Cuota agotada (`QUOTA_EXCEEDED`), en cualquiera de los tres límites de
         unidades del plan (por minuto, por hora o por mes), con `details` que
-        dicen cuál ha saltado y cuándo se renueva; modelo no disponible en el
-        plan (`MODEL_NOT_IN_PLAN`); o parámetro reservado a planes superiores
+        dicen cuál ha saltado y cuándo se renueva (ver «El plan de la cuenta»);
+        modelo no disponible en el plan (`MODEL_NOT_IN_PLAN`); o funcionalidad,
+        canal de API o parámetro no incluidos en el plan
         (`FEATURE_NOT_IN_PLAN`).
 
         Con `apiKeyAuth`, este mismo `403` puede llegar además de la
@@ -2245,9 +2316,10 @@ components:
         Galería congelada (`GALLERY_FROZEN_MODEL_NOT_IN_PLAN`); cuota agotada
         (`QUOTA_EXCEEDED`), en cualquiera de los tres límites de unidades del
         plan (por minuto, por hora o por mes), con `details` que dicen cuál ha
-        saltado y cuándo se renueva; límite de rostros indexados alcanzado
-        (`INDEXED_FACES_LIMIT_REACHED`); o parámetro reservado a planes
-        superiores (`FEATURE_NOT_IN_PLAN`).
+        saltado y cuándo se renueva (ver «El plan de la cuenta»); límite de
+        rostros indexados alcanzado (`INDEXED_FACES_LIMIT_REACHED`); o
+        funcionalidad, canal de API o parámetro no incluidos en el plan
+        (`FEATURE_NOT_IN_PLAN`).
 
         Con `apiKeyAuth`, este mismo `403` puede llegar además de la
         pasarela con el código `ACCOUNT_SUSPENDED`, que no es de dominio:

@@ -30,6 +30,7 @@ from src.controllers.inference import Inference
 from src.core.database import connect, ensure_indexes
 from src.core.errors import install_error_handlers
 from src.core.logger import get_logger, setup_logger
+from src.core.plan import Space
 from src.core.security_headers import SecurityHeadersMiddleware
 from src.core.settings import Settings, get_settings
 from src.documents import INDEXES
@@ -46,7 +47,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         client = await connect(settings.mongodb_uri)
+        # Sin conexión al crearlo: la primera llamada es la de la primera
+        # petición. Si SPACE no responde, esa petición es `503` (src/core/plan.py).
+        app.state.space = Space(settings.space_url, settings.space_api_key.get_secret_value())
         try:
+            await app.state.space.warm_up()
             app.state.db = client.get_default_database()
             # Nunca la URI: cuando lleve credencial (#106), la escribiría en el registro.
             logger.info("mongodb_connected", database=app.state.db.name)
@@ -77,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             yield
         finally:
+            await app.state.space.aclose()
             await client.close()
 
     app = FastAPI(

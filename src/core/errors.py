@@ -64,12 +64,16 @@ class ErrorReportError(Exception):
         code: str,
         message: str,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
         self.details = details
+        # Cabeceras que el contrato declara para ese error, como `Retry-After`
+        # en el `503 PLAN_UNAVAILABLE`.
+        self.headers = headers
 
 
 def code_for(status_code: int) -> str:
@@ -114,7 +118,7 @@ def error_report(
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ErrorReportError)
     async def _domain(_request: Request, exc: ErrorReportError) -> JSONResponse:
-        return error_report(exc.status_code, exc.code, exc.message, exc.details)
+        return error_report(exc.status_code, exc.code, exc.message, exc.details, exc.headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:

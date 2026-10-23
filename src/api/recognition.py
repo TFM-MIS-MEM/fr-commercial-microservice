@@ -20,38 +20,48 @@ from src.controllers.inference import Inference
 from src.core.database import get_db
 from src.core.identity import Identity as Caller
 from src.core.identity import require_identity
+from src.core.plan import Plan, require_plan, requires
 from src.models.inference import VerificationResult
 from src.models.recognition import SearchGalleryForm, SearchResult, VerifyAgainstIdentityForm
 
-router = APIRouter(prefix="/v1/fr/commercial", dependencies=[Depends(require_identity)])
+router = APIRouter(
+    prefix="/v1/fr/commercial",
+    dependencies=[Depends(require_identity), Depends(require_plan)],
+)
 
 
 @router.post(
     "/galleries/{galleryId}/identities/{identityId}/verify",
     response_model=VerificationResult,
     operation_id="verifyAgainstIdentity",
+    dependencies=[Depends(requires("identityVerification"))],
 )
 async def verify_against_identity(
     galleryId: str,  # noqa: N803 — el nombre del contrato
     identityId: str,  # noqa: N803
     form: Annotated[VerifyAgainstIdentityForm, File()],
     caller: Caller = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
     inference: Inference = Depends(get_inference),
 ) -> VerificationResult:
     return await controller.verify_against_identity(
-        db, inference, caller, galleryId, identityId, form
+        db, inference, caller, plan, galleryId, identityId, form
     )
 
 
 @router.post(
-    "/galleries/{galleryId}/search", response_model=SearchResult, operation_id="searchGallery"
+    "/galleries/{galleryId}/search",
+    response_model=SearchResult,
+    operation_id="searchGallery",
+    dependencies=[Depends(requires("gallerySearch"))],
 )
 async def search_gallery(
     galleryId: str,  # noqa: N803
     form: Annotated[SearchGalleryForm, File()],
     caller: Caller = Depends(require_identity),
+    plan: Plan = Depends(require_plan),
     db: AsyncDatabase = Depends(get_db),
     inference: Inference = Depends(get_inference),
 ) -> SearchResult:
-    return await controller.search_gallery(db, inference, caller, galleryId, form)
+    return await controller.search_gallery(db, inference, caller, plan, galleryId, form)

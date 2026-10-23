@@ -1,4 +1,5 @@
-"""Guardas de arranque de MONGODB_URI y EMBEDDING_TOKEN_SECRET (plano del código).
+"""Guardas de arranque de MONGODB_URI, EMBEDDING_TOKEN_SECRET, SPACE_URL y
+SPACE_API_KEY (plano del código).
 
 El plano de la orquestación ---`${MONGODB_URI:?}` en el compose de producción---
 se comprueba con `docker compose config`, no aquí.
@@ -12,7 +13,7 @@ import pytest
 
 from src.core.settings import ConfigurationError, Settings, load_settings
 from src.main import create_app
-from tests.support.settings import TOKEN_SECRET
+from tests.support.settings import SPACE_API_KEY, SPACE_URL, TOKEN_SECRET
 
 VALID = "mongodb://fr-commercial-mongodb:27017/fr-commercial-db"
 
@@ -25,6 +26,8 @@ def _token_secret(monkeypatch):
     desarrollo el compose ya lo define; así la cifra no depende de dónde corra.
     """
     monkeypatch.setenv("EMBEDDING_TOKEN_SECRET", TOKEN_SECRET)
+    monkeypatch.setenv("SPACE_URL", SPACE_URL)
+    monkeypatch.setenv("SPACE_API_KEY", SPACE_API_KEY)
 
 
 def test_absent_refuses_to_start(monkeypatch):
@@ -125,3 +128,44 @@ def test_campaign_knobs_default_to_torch_choice_and_one_at_a_time(monkeypatch):
 
     assert loaded.torch_num_threads is None
     assert loaded.inference_concurrency == 1
+
+
+# ------------------------------------------------------------------ SPACE (F10)
+
+
+@pytest.mark.parametrize("name", ["SPACE_URL", "SPACE_API_KEY"])
+def test_without_space_refuses_to_start(monkeypatch, name):
+    monkeypatch.setenv("MONGODB_URI", VALID)
+    monkeypatch.delenv(name)
+
+    with pytest.raises(ConfigurationError, match=name):
+        load_settings()
+
+
+@pytest.mark.parametrize("url", ["", "space-server:3000", "ftp://space-server", "http://"])
+def test_a_space_url_that_is_not_http_refuses_to_start(monkeypatch, url):
+    monkeypatch.setenv("MONGODB_URI", VALID)
+    monkeypatch.setenv("SPACE_URL", url)
+
+    with pytest.raises(ConfigurationError, match="SPACE_URL"):
+        load_settings()
+
+
+@pytest.mark.parametrize("key", ["", "   ", "usr_a-user-key", "a-key"])
+def test_a_space_api_key_that_is_not_an_organization_key_refuses_to_start(monkeypatch, key):
+    """Con una clave de usuario SPACE no evalúa: se vería en la primera petición."""
+    monkeypatch.setenv("MONGODB_URI", VALID)
+    monkeypatch.setenv("SPACE_API_KEY", key)
+
+    with pytest.raises(ConfigurationError, match="SPACE_API_KEY"):
+        load_settings()
+
+
+def test_space_is_taken_without_trailing_slash_and_the_key_never_in_clear(monkeypatch):
+    monkeypatch.setenv("MONGODB_URI", VALID)
+    monkeypatch.setenv("SPACE_URL", "http://space-server:3000/")
+
+    loaded = load_settings()
+
+    assert loaded.space_url == "http://space-server:3000"
+    assert SPACE_API_KEY not in repr(loaded)

@@ -8,7 +8,8 @@
 
 pytest>=9.1
 pytest-cov>=7.0
-# TestClient de starlette 1.7 avisa de que httpx está deprecado para él.
+# TestClient de starlette 1.7 avisa de que httpx está deprecado para él. Desde
+# F10 también es de producción (requirements.in); aquí sigue por las pruebas.
 httpx2>=2.13
 # Validación de cada respuesta contra el contrato (tests/contract/harness.py).
 # Schemathesis se descartó en #33: su validate_response ignora los estados no

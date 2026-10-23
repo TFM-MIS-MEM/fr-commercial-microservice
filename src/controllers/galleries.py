@@ -37,19 +37,15 @@ from pymongo.errors import DuplicateKeyError
 from src.controllers.common import MAX_SKIP, conflict, not_found, object_id
 from src.core.errors import ErrorReportError
 from src.core.identity import Identity
+from src.core.plan import Plan
 from src.documents.base import DELETING, utc_now
 from src.documents.face import COLLECTION as FACES
 from src.documents.gallery import COLLECTION, GalleryDocument
 from src.documents.identity import COLLECTION as IDENTITIES
 from src.models.gallery import Gallery, GalleryCreate, GalleryPage, GalleryUpdate, ModelName
 
-#: PROVISIONAL HASTA F10 (TFM-MIS-MEM/docs#42). El contrato dice que, sin
-#: `model`, se usa «el modelo por defecto del plan», y F3 no tiene plan
-#: conectado. `xs` está en los tres planes, así que nunca crea algo que el plan
-#: prohíba. Por lo mismo, F3 NO emite los `403` que `createGallery` declara
-#: (`MODEL_NOT_IN_PLAN`, `GALLERY_LIMIT_REACHED`): hasta F10 se puede crear una
-#: galería `base` en una cuenta Free, y como no hay `plan_changed` que la
-#: congele, F10 tendrá que reconciliar las que se hayan creado antes.
+#: Sin `model`, el contrato dice «el modelo por defecto del plan». `xs` está en
+#: los tres planes de la tarifa: es el modelo por defecto de todos.
 DEFAULT_MODEL = ModelName.xs
 
 
@@ -61,9 +57,27 @@ def _object_id(gallery_id: str) -> ObjectId:
     return object_id(gallery_id, _not_found)
 
 
-async def create_gallery(db: AsyncDatabase, identity: Identity, body: GalleryCreate) -> Gallery:
-    """STATE CREATION OPERATION: siempre `active`, contadores a 0."""
+async def create_gallery(
+    db: AsyncDatabase, identity: Identity, plan: Plan, body: GalleryCreate
+) -> Gallery:
+    """STATE CREATION OPERATION: siempre `active`, contadores a 0.
+
+    EL PLAN (F10): el modelo tiene que estar en él (`MODEL_NOT_IN_PLAN`) y la
+    cuenta por debajo de su límite de galerías (`GALLERY_LIMIT_REACHED`). El
+    límite es de ESTADO: se cuenta lo que hay, con los documentos de este
+    servicio, y SPACE solo da el valor. Dos altas simultáneas con la cuenta a una
+    galería del límite pueden pasar las dos; se acepta.
+    """
     model = body.model if "model" in body.model_fields_set else DEFAULT_MODEL
+    plan.require_model(model.value)
+    galleries = await db[COLLECTION].count_documents({"accountId": identity.account_id})
+    if galleries >= plan.limits["maxGalleries"]:
+        raise ErrorReportError(
+            403,
+            "GALLERY_LIMIT_REACHED",
+            "The plan does not allow more galleries",
+            {"limit": int(plan.limits["maxGalleries"])},
+        )
     doc = GalleryDocument(
         accountId=identity.account_id,
         name=body.name,
@@ -75,11 +89,11 @@ async def create_gallery(db: AsyncDatabase, identity: Identity, body: GalleryCre
     except DuplicateKeyError as exc:
         raise conflict(exc) from None
     doc.id = result.inserted_id
-    return Gallery.from_document(doc)
+    return Gallery.from_document(doc, plan)
 
 
 async def list_galleries(
-    db: AsyncDatabase, identity: Identity, page: int, page_size: int
+    db: AsyncDatabase, identity: Identity, plan: Plan, page: int, page_size: int
 ) -> GalleryPage:
     """RETRIEVAL OPERATION, paginada.
 
@@ -105,15 +119,21 @@ async def list_galleries(
         cursor = db[COLLECTION].find(query).sort("_id", ASCENDING).skip(skip).limit(page_size)
         docs, total = await asyncio.gather(cursor.to_list(), count)
     return GalleryPage(
-        items=[Gallery.from_document(GalleryDocument.model_validate(d)) for d in docs],
+        items=[Gallery.from_document(GalleryDocument.model_validate(d), plan) for d in docs],
         page=page,
         pageSize=page_size,
         total=total,
     )
 
 
-async def get_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str) -> Gallery:
-    """RETRIEVAL OPERATION: la cuenta propietaria forma parte del filtro."""
+async def get_gallery(
+    db: AsyncDatabase, identity: Identity, plan: Plan, gallery_id: str
+) -> Gallery:
+    """RETRIEVAL OPERATION: la cuenta propietaria forma parte del filtro.
+
+    El `status` sale con el plan de la petición: congelada al vuelo si el plan
+    no incluye su modelo (`Gallery.from_document`).
+    """
     oid = _object_id(gallery_id)
 
     doc = await db[COLLECTION].find_one({"_id": oid, "accountId": identity.account_id})
@@ -121,11 +141,11 @@ async def get_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str) ->
         raise _not_found()
     # Un documento corrupto no se sirve: `ValidationError`, y `500`. El porqué,
     # en src/documents/gallery.py.
-    return Gallery.from_document(GalleryDocument.model_validate(doc))
+    return Gallery.from_document(GalleryDocument.model_validate(doc), plan)
 
 
 async def update_gallery(
-    db: AsyncDatabase, identity: Identity, gallery_id: str, body: GalleryUpdate
+    db: AsyncDatabase, identity: Identity, plan: Plan, gallery_id: str, body: GalleryUpdate
 ) -> Gallery:
     """STATE TRANSITION OPERATION sobre `name` y `description`.
 
@@ -140,7 +160,7 @@ async def update_gallery(
     oid = _object_id(gallery_id)
     changes = {name: getattr(body, name) for name in body.model_fields_set}
     if not changes:
-        return await get_gallery(db, identity, gallery_id)
+        return await get_gallery(db, identity, plan, gallery_id)
 
     changes["updatedAt"] = utc_now()
     try:
@@ -153,7 +173,7 @@ async def update_gallery(
         raise conflict(exc) from None
     if doc is None:
         raise _not_found()
-    return Gallery.from_document(GalleryDocument.model_validate(doc))
+    return Gallery.from_document(GalleryDocument.model_validate(doc), plan)
 
 
 async def delete_gallery(db: AsyncDatabase, identity: Identity, gallery_id: str) -> None:

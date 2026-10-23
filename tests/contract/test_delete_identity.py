@@ -33,6 +33,7 @@ from tests.support.identities import (
     state,
 )
 from tests.support.identity import ACCOUNT_A, ACCOUNT_B, gateway_headers
+from tests.support.plan import with_fake_space
 from tests.support.seed import seed_gallery, seed_identity_with_faces
 from tests.support.settings import settings
 
@@ -139,7 +140,7 @@ def test_a_cascade_cut_halfway_leaves_the_identity_visible_and_a_retry_finishes_
         return await original(self, *args, **kwargs)
 
     monkeypatch.setattr(AsyncCollection, method, crash)
-    app = create_app(settings(test_db_uri))
+    app = with_fake_space(create_app(settings(test_db_uri)))
     with TestClient(app, base_url=BASE_URL, raise_server_exceptions=False) as client:
         res = client.delete(IDENTITY.format(gallery, identity), headers=gateway_headers())
 
