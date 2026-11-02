@@ -90,3 +90,42 @@ arrastra CUDA también en aarch64 (imagen de 9,31 GB frente a 1,58 GB).
 `pip-audit` no los encuentra en PyPI y los salta; la CI los audita en un paso
 aparte por su versión sin la etiqueta local. `make lock` tiene que ejecutarse en
 linux, por la misma razón que las pruebas.
+
+## Licencias
+
+Este repositorio incluye pesos y código de terceros, cada uno con su licencia.
+El detalle fichero a fichero, con commits de origen y resúmenes, está en
+[`checkpoints/README.md`](checkpoints/README.md) y
+[`src/inference/README.md`](src/inference/README.md).
+
+**Pesos de EdgeFace** (`checkpoints/edgeface_*.pt`): **CC BY-NC-SA 4.0**,
+[`checkpoints/LICENSE-EdgeFace-weights`](checkpoints/LICENSE-EdgeFace-weights).
+Autoría de Anjith George, Christophe Ecabert, Hatef Otroshi Shahreza, Ketan
+Kotwal y Sébastien Marcel (Idiap Research Institute), publicados en
+[otroshi/edgeface](https://github.com/otroshi/edgeface). Se redistribuyen sin
+modificar, byte a byte los del proyecto original.
+[Resumen de la licencia](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+
+- **Uso no comercial.** Valen para este trabajo académico; un despliegue
+  comercial necesitaría otros pesos o una licencia de sus titulares.
+- Cualquier redistribución conserva esta atribución y el enlace al proyecto
+  original, y una obra derivada de los pesos se publica con la misma licencia.
+
+**Pesos de MTCNN** (`checkpoints/mtcnn_*.npz`): **MIT**,
+[`checkpoints/LICENSE-MTCNN-weights`](checkpoints/LICENSE-MTCNN-weights).
+Proceden de
+[kpzhang93/MTCNN_face_detection_alignment](https://github.com/kpzhang93/MTCNN_face_detection_alignment),
+convertidos de `.npy` a `.npz` sin cambiar ningún tensor.
+
+**Código tomado de fr-compilation** (`src/inference/edgeface/` y
+`src/inference/mtcnn/`). fr-compilation no tiene licencia propia; cada pieza
+conserva la del proyecto del que procede, y su texto va junto al código:
+
+| Código | Proyecto original | Licencia |
+|---|---|---|
+| `src/inference/edgeface/` | [otroshi/edgeface](https://github.com/otroshi/edgeface) | BSD-3-Clause, [`LICENSE`](src/inference/edgeface/LICENSE) |
+| `src/inference/mtcnn/detector.py`, `align.py` | [mk-minchul/AdaFace](https://github.com/mk-minchul/AdaFace) | MIT, [`LICENSE-AdaFace`](src/inference/mtcnn/LICENSE-AdaFace) |
+| `src/inference/mtcnn/nets.py`, `box_utils.py`, `first_stage.py` | [TropComplique/mtcnn-pytorch](https://github.com/TropComplique/mtcnn-pytorch) | MIT, [`LICENSE-mtcnn-pytorch`](src/inference/mtcnn/LICENSE-mtcnn-pytorch) |
+
+`src/inference/lssc.py` no es una copia: reimplementa el método de
+binarización de fr-compilation, con los cortes calculados en este servicio.
