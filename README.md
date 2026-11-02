@@ -15,11 +15,17 @@ TFM. Python 3.11, FastAPI y MongoDB.
   - Verificación contra identidad y búsqueda 1:N: `verifyAgainstIdentity` y
     `searchGallery` (F8, docs#40).
   - Embeddings guardados binarizados con LSSC (F6, docs#38).
-  - **Pendiente:** el token de procedencia (F7, docs#39) ---hasta entonces, las
-    entradas por vector responden `400 EMBEDDING_INPUT_NOT_SUPPORTED`---, las
-    unidades de consumo (F9), los límites del plan (F10), los tokens de
-    enrolamiento (F11), la prueba de vida (F12) y los puntos de notificación
-    (F13).
+  - **Plan de la cuenta con SPACE** (F10, docs#42 y docs#51): cada operación
+    se decide con el plan que evalúa SPACE ---funcionalidades, modelos, límites
+    de galerías y rostros, congelación de galerías calculada al vuelo--- y las
+    que consumen imputan sus unidades en SPACE al admitirse. Con SPACE caído,
+    `503 PLAN_UNAVAILABLE`. Véase [`src/core/plan.py`](src/core/plan.py).
+  - **Fuera:** los puntos de notificación (webhooks, F13, siete operaciones),
+    la prueba de vida (F12, dos) y los tokens de enrolamiento (F11, una). Del
+    token de procedencia (F7, docs#39) solo está la emisión en
+    `extractEmbedding`: nadie lo verifica todavía, y las entradas por vector
+    responden `400 EMBEDDING_INPUT_NOT_SUPPORTED`. El evento de consumo hacia
+    `pricing` (docs#138) tampoco está.
   - Alcanzable a través de la pasarela en `/v1/fr/commercial`, con los dos
     canales (TFM-MIS-MEM/api-gateway#3).
 - **Medición de capacidad:** el instrumento de carga y los resultados de la
