@@ -1,6 +1,6 @@
 """El plan de la cuenta, según SPACE (F10, TFM-MIS-MEM/docs#42 y #51).
 
-SPACE evalúa la tarifa publicada en SPHERE (`frsaas`). Este módulo es lo único
+SPACE evalúa la tarifa publicada en SPHERE (`faceapi`). Este módulo es lo único
 del servicio que sabe que existe: una llamada para leer el plan y otra para
 imputar unidades. Los controladores reciben un `Plan` y llaman a `consume`.
 
@@ -56,7 +56,7 @@ logger = get_logger(__name__)
 
 #: El servicio en SPACE: el nombre de la tarifa en SPHERE, en minúsculas. Es el
 #: prefijo de toda funcionalidad y todo límite.
-SERVICE = "frsaas"
+SERVICE = "faceapi"
 
 #: Los tres límites de unidades, en el orden en que se informa el agotado.
 UNIT_LIMITS = {
